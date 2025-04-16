@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EyeCare Tracker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>👁️ EyeCare Tracker</h1>
+    <p>Use the 20-20-20 rule: Every 20 minutes, look at something 20 feet away for 20 seconds.</p>
+    <button onclick="startTimer()">Start Routine</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    let timer;
+    function startTimer() {
+      document.getElementById('status').textContent = '✅ Timer started! You’ll get a break reminder every 20 minutes.';
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => {
+        alert("🔔 Eye Break! Look 20 feet away for 20 seconds.");
+      }, 20 * 60 * 1000);
+    }
+  </script>
+</body>
+</html>
