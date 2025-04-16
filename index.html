@@ -7,21 +7,53 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>👁️ EyeCare Tracker</h1>
-    <p>Use the 20-20-20 rule: Every 20 minutes, look at something 20 feet away for 20 seconds.</p>
-    <button onclick="startTimer()">Start Routine</button>
-    <div id="status"></div>
+  <div class="wrapper">
+    <div class="card">
+      <h1>👁️ EyeCare Tracker</h1>
+      <p class="subtitle">Protect your vision with the 20-20-20 rule.</p>
+      <button onclick="startTimer()">Start 20-20-20 Timer</button>
+      <p id="status"></p>
+      <div class="progress-container">
+        <div id="progress-bar"></div>
+      </div>
+      <p id="countdown">⏳ 20:00</p>
+    </div>
   </div>
 
+  <audio id="ding-sound" src="ding.mp3" preload="auto"></audio>
+
   <script>
-    let timer;
+    let timer, countdownTimer;
+    let totalTime = 20 * 60; // 20 minutes in seconds
+    let remaining = totalTime;
+
     function startTimer() {
-      document.getElementById('status').textContent = '✅ Timer started! You’ll get a break reminder every 20 minutes.';
-      if (timer) clearInterval(timer);
-      timer = setInterval(() => {
-        alert("🔔 Eye Break! Look 20 feet away for 20 seconds.");
-      }, 20 * 60 * 1000);
+      clearInterval(timer);
+      clearInterval(countdownTimer);
+      remaining = totalTime;
+
+      const ding = document.getElementById("ding-sound");
+      const countdown = document.getElementById("countdown");
+      const progressBar = document.getElementById("progress-bar");
+      const status = document.getElementById("status");
+
+      status.textContent = "✅ Timer started! Break in 20 minutes.";
+
+      countdownTimer = setInterval(() => {
+        remaining--;
+        const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
+        const seconds = String(remaining % 60).padStart(2, "0");
+        countdown.textContent = `⏳ ${minutes}:${seconds}`;
+        const percent = ((totalTime - remaining) / totalTime) * 100;
+        progressBar.style.width = percent + "%";
+
+        if (remaining <= 0) {
+          clearInterval(countdownTimer);
+          ding.play();
+          alert("🔔 Eye Break! Look 20 feet away for 20 seconds.");
+          status.textContent = "⌛ Time for a break!";
+        }
+      }, 1000);
     }
   </script>
 </body>
