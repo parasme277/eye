@@ -409,7 +409,7 @@ input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent);
   .nav-btn { flex-direction: column; gap: 3px; font-size: 0.68rem; padding: 7px 4px; align-items: center; justify-content: center; }
   .topbar {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    position: sticky; top: 0; z-index: 30; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 30; padding: 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
   }
   .topbar .brand { padding: 0; font-size: 1.05rem; }
   .topbar .brand-mark { width: 28px; height: 28px; }

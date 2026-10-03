@@ -716,6 +716,17 @@ function notify(title, body) {
   try { if ("Notification" in window && Notification.permission === "granted" && document.hidden) new Notification(title, { body }); } catch (e) { /* ignore */ }
 }
 
+// Two-step confirm inside the page instead of a browser pop-up:
+// the first click arms the button, a second click within a few seconds confirms.
+function armed(btn, label) {
+  if (btn.dataset.armed) { clearTimeout(btn._armT); delete btn.dataset.armed; btn.innerHTML = btn._orig; return true; }
+  btn._orig = btn.innerHTML;
+  btn.dataset.armed = "1";
+  btn.textContent = label;
+  btn._armT = setTimeout(() => { delete btn.dataset.armed; btn.innerHTML = btn._orig; }, 3500);
+  return false;
+}
+
 /* ---------------- Navigation & toast ---------------- */
 function toast(msg) {
   const t = $("#toast");
@@ -773,8 +784,8 @@ document.addEventListener("click", (e) => {
     save(); return toast("Removed from your log.");
   }
   if (el("[data-del]")) {
-    const id = el("[data-del]").dataset.del, t = taskById(id);
-    if (confirm(`Delete "${t.title}"?`)) { state.tasks = state.tasks.filter((x) => x.id !== id); save(); toast("Task deleted. Plan rebalanced."); }
+    const id = el("[data-del]").dataset.del;
+    if (armed(el("[data-del]"), "Delete?")) { state.tasks = state.tasks.filter((x) => x.id !== id); save(); toast("Task deleted. Plan rebalanced."); }
     return;
   }
   if (el("[data-edit]")) return startEdit(taskById(el("[data-edit]").dataset.edit));
@@ -942,8 +953,13 @@ function resetForm() {
 $("#cancel-edit").addEventListener("click", resetForm);
 
 /* ---- Data ---- */
-$("#load-demo").addEventListener("click", () => {
-  if ((state.tasks.length || state.sessions.length) && !confirm("Replace your current tasks, check-ins and work log with demo data?")) return;
+$("#load-demo").addEventListener("click", (e) => {
+  if ((state.tasks.length || state.sessions.length) && !armed(e.currentTarget, "Replace my data?")) return;
+  loadDemo();
+  goto("today");
+  toast("Demo data loaded.");
+});
+function loadDemo() {
   const t = todayKey();
   const mk = (title, subject, type, dueIn, difficulty, hours, desc = "") => ({ id: uid(), done: false, title, subject, type, due: addDays(t, dueIn), difficulty, hours, desc });
   state.tasks = [
@@ -962,9 +978,7 @@ $("#load-demo").addEventListener("click", () => {
   state.timer = null;
   if (!state.name) state.name = "Alex";
   save();
-  goto("today");
-  toast("Demo data loaded.");
-});
+}
 $("#export").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
@@ -973,8 +987,8 @@ $("#export").addEventListener("click", () => {
   a.click();
   URL.revokeObjectURL(a.href);
 });
-$("#reset").addEventListener("click", () => {
-  if (!confirm("Erase all tasks, check-ins, work logs and settings on this device?")) return;
+$("#reset").addEventListener("click", (e) => {
+  if (!armed(e.currentTarget, "Click again to erase")) return;
   state = defaultState();
   save();
   toast("Everything erased.");
@@ -983,6 +997,11 @@ $("#reset").addEventListener("click", () => {
 /* ---------------- Boot ---------------- */
 resetForm();
 render();
+// The shared preview page opens with example data so there's something to explore.
+if (window.OVERLOAD_PREVIEW && !state.tasks.length && !state.sessions.length && !state.moods.length) {
+  loadDemo();
+  setTimeout(() => toast("You're looking at example data. Erase it in Settings to start fresh."), 600);
+}
 goto(location.hash.slice(1) || "today", false);
 if (state.timer?.endsAt) {
   if (timerLeft() <= 0) timerFinish(true); // finished while the tab was closed
