@@ -26,7 +26,6 @@
     <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1" fill="currentColor"/><rect x="14" y="4.5" width="4" height="15" rx="1" fill="currentColor"/></symbol>
-    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5.5" y="5.5" width="13" height="13" rx="2.5" fill="currentColor"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 22c4.2 0 7-2.8 7-7 0-3.6-2.4-6.1-4-8-.4 1.9-1.4 3-2.8 3C12.2 7 11 4.3 8.5 2.5 8.5 7 5 9.3 5 14.5 5 18.9 7.8 22 12 22z"/></symbol>
@@ -40,7 +39,8 @@
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-4-4L4 16z"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
-    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M12 3v9M12 3a1.5 1.5 0 0 1 3 0v9M15 5a1.5 1.5 0 0 1 3 0v8a7 7 0 0 1-7 7h-.5a6 6 0 0 1-5-2.7L3.5 14a1.6 1.6 0 0 1 2.6-1.8L8 14.5V6a1.5 1.5 0 0 1 3 0v6"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/></symbol>
   </svg>
 
   <div class="app">
@@ -79,126 +79,106 @@
           </div>
 
           <div class="grid">
-            <!-- Burnout risk -->
-            <div class="card span-5">
-              <div class="card-head"><h2>Burnout Risk Index</h2><span class="pill" id="risk-pill"></span></div>
-              <div class="risk-top">
-                <div class="ring">
-                  <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52" fill="none" stroke-width="11"/>
-                    <circle class="prog" id="risk-arc" cx="60" cy="60" r="52" fill="none" stroke-width="11" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
-                  <div class="ring-center"><b id="risk-score">0</b><span>out of 100</span></div>
+            <div class="stack span-7">
+            <!-- Today's checklist + focus mode -->
+            <div class="card" id="today-card">
+              <div id="list-mode">
+                <div class="card-head">
+                  <div><h2>Today's plan</h2><p class="small muted" id="today-sub"></p></div>
+                  <span class="pill" id="today-pill"></span>
                 </div>
-                <div class="risk-text">
-                  <p class="tiny faint">THIS WEEK</p>
-                  <h3 id="risk-title">Looking good</h3>
-                  <p class="small muted" id="risk-summary"></p>
+                <div class="bar today-meter" id="today-bar"><i></i></div>
+                <div class="todo" id="todo"></div>
+                <div class="todo-foot">
+                  <button class="link-btn" id="log-open">Worked on something else? Log time</button>
+                  <button class="link-btn" id="focus-general">Start a focus timer</button>
                 </div>
+                <form class="log-form hidden" id="log-form">
+                  <label class="field">What did you work on?
+                    <select id="log-task"></select>
+                  </label>
+                  <div class="log-row">
+                    <div class="chips" id="log-chips">
+                      <button type="button" class="chip" data-m="15">15m</button>
+                      <button type="button" class="chip" data-m="30">30m</button>
+                      <button type="button" class="chip on" data-m="60">1h</button>
+                      <button type="button" class="chip" data-m="90">1.5h</button>
+                      <button type="button" class="chip" data-m="120">2h</button>
+                    </div>
+                    <input type="number" id="log-min" min="1" max="600" value="60" aria-label="Minutes" /><span class="small muted">min</span>
+                  </div>
+                  <div class="row">
+                    <button class="btn primary sm" type="submit">Save</button>
+                    <button class="btn ghost sm" type="button" id="log-cancel">Cancel</button>
+                  </div>
+                </form>
               </div>
-              <div class="factors" id="factors"></div>
-            </div>
 
-            <!-- Focus timer -->
-            <div class="card span-7 timer-card" id="timer-card">
-              <div class="card-head">
-                <h2>Focus timer</h2>
-                <div class="seg" id="timer-presets">
+              <div class="focus hidden" id="focus-mode">
+                <div class="focus-task"><span class="eyebrow" id="focus-label">Focus on</span><b id="focus-title"></b></div>
+                <div class="seg" id="focus-len">
                   <button data-min="25">25 min</button>
                   <button data-min="45">45 min</button>
                   <button data-min="60">60 min</button>
-                  <button data-break="5">Break</button>
                 </div>
-              </div>
-              <div class="timer-body">
+                <div class="saved-note hidden" id="saved-note"></div>
                 <div class="timer-ring" id="timer-ring">
                   <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="54" fill="none" stroke-width="6"/>
                     <circle class="prog" id="timer-arc" cx="60" cy="60" r="54" fill="none" stroke-width="6" stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="0"/></svg>
-                  <div class="timer-center"><div class="timer-time" id="timer-time">25:00</div><div class="timer-phase" id="timer-phase">Ready to focus</div></div>
+                  <div class="timer-center"><div class="timer-time" id="timer-time">25:00</div><div class="timer-phase" id="timer-phase"></div></div>
                 </div>
-                <div class="timer-side">
-                  <label class="field">Working on
-                    <select id="timer-task"></select>
-                  </label>
-                  <div class="timer-btns">
-                    <button class="btn primary lg" id="timer-main"></button>
-                    <button class="btn lg" id="timer-stop"><svg class="icon"><use href="#i-check"/></svg>Finish &amp; save</button>
+                <div class="focus-btns">
+                  <button class="btn primary lg" id="timer-main"></button>
+                  <button class="btn lg" id="timer-second"></button>
+                </div>
+                <button class="link-btn" id="timer-third"></button>
+              </div>
+            </div>
+
+            <!-- Coming up -->
+            <div class="card" id="coming-card">
+              <div class="card-head"><h2>Coming up</h2><button class="btn ghost sm" data-goto="plan">See full plan</button></div>
+              <div class="dl-list" id="coming-up"></div>
+            </div>
+            </div>
+
+            <div class="stack span-5">
+              <!-- Check-in -->
+              <div class="card">
+                <div class="card-head"><h2>How are you feeling?</h2><span class="small faint" id="checkin-status"></span></div>
+                <div class="moods" id="moods">
+                  <button class="mood" data-mood="1"><span class="e">🚀</span><span class="l">Great</span></button>
+                  <button class="mood" data-mood="2"><span class="e">😊</span><span class="l">Good</span></button>
+                  <button class="mood" data-mood="3"><span class="e">😐</span><span class="l">Okay</span></button>
+                  <button class="mood" data-mood="4"><span class="e">😴</span><span class="l">Tired</span></button>
+                  <button class="mood" data-mood="5"><span class="e">😰</span><span class="l">Stressed</span></button>
+                </div>
+                <div class="hist-head"><h3>Last 14 days</h3><span class="small faint" id="hist-summary"></span></div>
+                <div class="history" id="history"></div>
+                <p class="hist-note" id="hist-note"></p>
+              </div>
+
+              <!-- Burnout risk -->
+              <div class="card">
+                <div class="card-head"><h2>Burnout risk</h2><span class="pill" id="risk-pill"></span></div>
+                <div class="risk-top">
+                  <div class="ring">
+                    <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52" fill="none" stroke-width="12"/>
+                      <circle class="prog" id="risk-arc" cx="60" cy="60" r="52" fill="none" stroke-width="12" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
+                    <div class="ring-center"><b id="risk-score">0</b><span>of 100</span></div>
                   </div>
-                  <p class="small muted" id="timer-note"></p>
-                </div>
-              </div>
-              <div class="stats" id="focus-stats"></div>
-            </div>
-
-            <!-- Today -->
-            <div class="card span-7">
-              <div class="card-head">
-                <h2>Today's work</h2>
-                <button class="btn soft sm" id="log-open"><svg class="icon sm"><use href="#i-plus"/></svg>Log time</button>
-              </div>
-              <div class="today-hero" id="today-hero"></div>
-              <form class="log-form hidden" id="log-form">
-                <label class="field">What did you work on?
-                  <select id="log-task"></select>
-                </label>
-                <div class="log-row">
-                  <div class="chips" id="log-chips">
-                    <button type="button" class="chip" data-m="15">15m</button>
-                    <button type="button" class="chip" data-m="30">30m</button>
-                    <button type="button" class="chip on" data-m="60">1h</button>
-                    <button type="button" class="chip" data-m="90">1.5h</button>
-                    <button type="button" class="chip" data-m="120">2h</button>
+                  <div class="risk-text">
+                    <span class="eyebrow">Next 7 days</span>
+                    <h3 id="risk-title"></h3>
+                    <p class="small muted" id="risk-summary"></p>
                   </div>
-                  <input type="number" id="log-min" min="1" max="600" value="60" aria-label="Minutes" /> <span class="small muted">min</span>
                 </div>
-                <div class="row">
-                  <button class="btn primary sm" type="submit">Save</button>
-                  <button class="btn ghost sm" type="button" id="log-cancel">Cancel</button>
-                </div>
-              </form>
-              <div class="progress-line"><span id="today-progress-text"></span><span id="today-progress-pct"></span></div>
-              <div class="bar" id="today-bar"><i style="width:0"></i></div>
-              <div class="blocks" id="today-blocks"></div>
-              <div class="sessions hidden" id="today-sessions"></div>
-            </div>
-
-            <!-- Check-in -->
-            <div class="card span-5">
-              <div class="card-head"><h2>Daily check-in</h2><span class="small faint" id="checkin-status"></span></div>
-              <div class="moods" id="moods">
-                <button class="mood" data-mood="1"><span class="e">🚀</span><span class="l">Great</span></button>
-                <button class="mood" data-mood="2"><span class="e">😊</span><span class="l">Good</span></button>
-                <button class="mood" data-mood="3"><span class="e">😐</span><span class="l">Okay</span></button>
-                <button class="mood" data-mood="4"><span class="e">😴</span><span class="l">Tired</span></button>
-                <button class="mood" data-mood="5"><span class="e">😰</span><span class="l">Stressed</span></button>
+                <ul class="tips" id="tips"></ul>
+                <details class="how">
+                  <summary>How is this calculated?</summary>
+                  <div class="factors" id="factors"></div>
+                </details>
               </div>
-              <div class="hist-head"><h3>Your last 14 days</h3><span class="small faint" id="trend-text"></span></div>
-              <div class="history" id="history"></div>
-              <div class="stats" id="stats"></div>
-              <p class="hist-note" id="hist-note"></p>
-            </div>
-
-            <!-- Forecast -->
-            <div class="card span-8">
-              <div class="card-head"><h2>Workload forecast<span class="sub">next 14 days</span></h2></div>
-              <div class="chart" id="chart"></div>
-              <div class="legend">
-                <span><i class="l-plan"></i>Overload plan</span>
-                <span><i class="l-naive"></i>Cramming the night before</span>
-                <span><i class="l-cap"></i>Your daily limit</span>
-                <span><i class="l-due"></i>Deadline</span>
-              </div>
-              <div class="callout hidden" id="callout"><svg class="icon"><use href="#i-trend-down"/></svg><span></span></div>
-            </div>
-
-            <!-- Upcoming -->
-            <div class="card span-4">
-              <div class="card-head"><h2>Coming up</h2><button class="btn ghost sm" data-goto="tasks">All tasks</button></div>
-              <div class="up-list" id="upcoming"></div>
-            </div>
-
-            <!-- Insights -->
-            <div class="card span-12">
-              <div class="card-head"><h2>Insights</h2></div>
-              <ul class="insights" id="insights"></ul>
             </div>
           </div>
         </section>
@@ -208,10 +188,29 @@
           <div class="page-head">
             <div>
               <h1>Study plan</h1>
-              <p class="muted">Overload spreads your work across the days before each deadline and never goes over your daily limit. It rebalances whenever something changes.</p>
+              <p class="muted">Overload spreads your work across the days before each deadline and never goes over your daily limit. It updates whenever something changes.</p>
             </div>
           </div>
-          <div class="days" id="days"></div>
+          <div class="grid">
+            <div class="span-8" id="agenda"></div>
+            <div class="stack span-4">
+              <div class="card">
+                <div class="card-head"><h2>Deadlines</h2><button class="btn ghost sm" data-goto="tasks">Manage</button></div>
+                <div class="dl-list" id="deadlines"></div>
+              </div>
+              <div class="card">
+                <div class="card-head"><div><h2>Workload</h2><p class="small muted">Next 14 days</p></div></div>
+                <div class="chart" id="chart"></div>
+                <div class="legend">
+                  <span><i class="l-plan"></i>Your plan</span>
+                  <span><i class="l-naive"></i>Cramming</span>
+                  <span><i class="l-cap"></i>Daily limit</span>
+                  <span><i class="l-due"></i>Deadline</span>
+                </div>
+                <div class="callout hidden" id="callout"><svg class="icon"><use href="#i-trend-down"/></svg><span></span></div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- ================= TASKS ================= -->
@@ -219,11 +218,12 @@
           <div class="page-head">
             <div>
               <h1>Tasks</h1>
-              <p class="muted">Add tests, assignments and projects. Paste the description and Overload estimates how long it will take.</p>
+              <p class="muted">Your tests, assignments and projects. Overload plans study time for each one.</p>
             </div>
+            <button class="btn primary" id="new-task"><svg class="icon"><use href="#i-plus"/></svg>New task</button>
           </div>
           <div class="grid">
-            <form class="card span-12" id="task-form">
+            <form class="card span-12 hidden" id="task-form">
               <div class="card-head"><h2 id="form-title">New task</h2></div>
               <input type="hidden" id="t-id" />
               <div class="form-grid">
@@ -250,8 +250,8 @@
                   <label class="field" style="width:150px">Estimated hours<input type="number" id="t-hours" min="0.5" max="100" step="0.5" required /></label>
                   <button type="button" class="btn soft" id="estimate-btn"><svg class="icon"><use href="#i-sparkle"/></svg><span>Estimate with AI</span></button>
                   <span style="flex:1"></span>
-                  <button type="button" class="btn ghost hidden" id="cancel-edit">Cancel</button>
-                  <button type="submit" class="btn primary" id="save-task"><svg class="icon"><use href="#i-plus"/></svg><span>Add task</span></button>
+                  <button type="button" class="btn ghost" id="cancel-edit">Cancel</button>
+                  <button type="submit" class="btn primary" id="save-task"><svg class="icon"><use href="#i-check"/></svg><span>Add task</span></button>
                 </div>
                 <div class="c6 est-box hidden" id="estimate-note"></div>
               </div>
@@ -295,16 +295,23 @@
 
             <div class="card">
               <h2>Focus timer</h2>
-              <p class="small muted">Defaults for focus sessions.</p>
-              <div class="row">
-                <label class="field" style="width:130px">Break length (min)<input type="number" id="s-break" min="1" max="30" /></label>
-                <label class="check-label"><input type="checkbox" id="s-sound" /> Play a sound when time is up</label>
+              <p class="small muted">Default session length and breaks.</p>
+              <div class="settings-stack">
+                <div class="seg" id="s-focus">
+                  <button data-min="25">25 min</button>
+                  <button data-min="45">45 min</button>
+                  <button data-min="60">60 min</button>
+                </div>
+                <div class="row">
+                  <label class="field" style="width:130px">Break length (min)<input type="number" id="s-break" min="1" max="30" /></label>
+                  <label class="check-label"><input type="checkbox" id="s-sound" /> Play a sound when time is up</label>
+                </div>
               </div>
             </div>
 
             <div class="card">
               <h2>AI estimates</h2>
-              <p class="small muted">Overload uses Google Gemini to read assignment descriptions and estimate how long they'll take.</p>
+              <p class="small muted">Overload can use Google Gemini to read assignment descriptions and estimate how long they'll take.</p>
               <div class="status-line"><span class="status-dot" id="ai-dot"></span><span id="ai-status"></span></div>
             </div>
 
@@ -312,7 +319,8 @@
               <h2>Your data</h2>
               <p class="small muted">Everything is stored only in this browser. No account needed.</p>
               <div class="row">
-                <button class="btn soft" id="load-demo">Load demo data</button>
+                <button class="btn soft" id="replay-tour">Replay intro</button>
+                <button class="btn" id="load-demo">Load example data</button>
                 <button class="btn" id="export">Export backup</button>
                 <button class="btn danger" id="reset">Erase everything</button>
               </div>
@@ -320,6 +328,20 @@
           </div>
         </section>
       </main>
+    </div>
+  </div>
+
+  <!-- Welcome tour -->
+  <div class="tour hidden" id="tour">
+    <div class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+      <div class="tour-body" id="tour-body"></div>
+      <div class="tour-foot">
+        <div class="dots" id="tour-dots"></div>
+        <div class="tour-btns">
+          <button class="btn ghost" id="tour-back">Back</button>
+          <button class="btn primary" id="tour-next">Next</button>
+        </div>
+      </div>
     </div>
   </div>
 

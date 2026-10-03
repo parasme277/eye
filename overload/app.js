@@ -2,13 +2,14 @@
  *
  * Everything runs in the browser and is saved to localStorage.
  *
- *   1. Weighted task scoring          -> taskWeight()
- *   2. Effort estimation              -> estimateLocal() / estimateWithAI()
- *   3. Automatic redistribution       -> buildPlan()
- *   4. Workload forecast              -> renderChart() + naivePlan()
- *   5. Stress tracking & work logging -> moods[], sessions[]
- *   6. Burnout Risk Index             -> burnoutIndex()
- *   7. Focus timer                    -> timer*
+ *   1. Weighted task scoring      -> taskWeight()
+ *   2. Effort estimation          -> estimateLocal() / estimateWithAI()
+ *   3. Automatic redistribution   -> buildPlan()
+ *   4. Workload forecast          -> renderChart() + naivePlan()
+ *   5. Check-ins & work log       -> moods[], sessions[]
+ *   6. Burnout Risk Index         -> burnoutIndex()
+ *   7. Focus timer                -> timer*()
+ *   8. Welcome tour               -> tour*()
  */
 
 // URL of the AI proxy (see worker/README.md). Leave empty to use only the
@@ -30,6 +31,7 @@ const TYPES = {
 };
 const MOODS = { 1: ["🚀", "Great"], 2: ["😊", "Good"], 3: ["😐", "Okay"], 4: ["😴", "Tired"], 5: ["😰", "Stressed"] };
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SUBJECT_COLORS = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#8b5cf6", "#0ea5e9", "#ef4444", "#22c55e", "#f97316", "#06b6d4"];
 
 /* ---------------- Date helpers (local time, YYYY-MM-DD) ---------------- */
@@ -57,6 +59,7 @@ const fmtClock = (sec) => `${pad(Math.floor(sec / 60))}:${pad(Math.floor(sec % 6
 /* ---------------- State ---------------- */
 function defaultState() {
   return {
+    onboarded: false,
     name: "",
     capacity: [2, 3, 3, 3, 3, 2, 2], // Sun..Sat
     tasks: [],
@@ -70,8 +73,10 @@ function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const s = { ...defaultState(), ...JSON.parse(raw) };
+      const saved = JSON.parse(raw);
+      const s = { ...defaultState(), ...saved };
       s.prefs = { ...defaultState().prefs, ...s.prefs };
+      if (saved.onboarded === undefined) s.onboarded = s.tasks.length > 0 || s.sessions.length > 0;
       delete s.geminiKey; delete s.geminiModel; // from v1
       return s;
     }
@@ -105,7 +110,7 @@ function renderThemeControls() {
 }
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", renderThemeControls);
 
-/* ---------------- Work logging ---------------- */
+/* ---------------- Work log ---------------- */
 const loggedHours = (taskId) => state.sessions.filter((s) => s.taskId === taskId).reduce((a, s) => a + s.minutes, 0) / 60;
 const workedOn = (date) => state.sessions.filter((s) => s.date === date).reduce((a, s) => a + s.minutes, 0) / 60;
 const remainingHours = (t) => Math.max(0, t.hours - loggedHours(t.id));
@@ -115,7 +120,7 @@ function logSession(taskId, minutes, source, date = todayKey()) {
 }
 function streak() {
   let k = todayKey(), n = 0;
-  if (!(workedOn(k) > 0)) k = addDays(k, -1); // today not logged yet doesn't break the streak
+  if (!(workedOn(k) > 0)) k = addDays(k, -1); // not logging yet today doesn't break the streak
   while (workedOn(k) > 0) { n++; k = addDays(k, -1); }
   return n;
 }
@@ -241,7 +246,9 @@ function buildPlan() {
       overflow[t.id] = remaining;
       const k = eligible[eligible.length - 1];
       day(k).load += remaining;
-      day(k).blocks.push({ taskId: t.id, hours: remaining, forced: true });
+      const same = day(k).blocks.find((b) => b.taskId === t.id);
+      if (same) { same.hours += remaining; same.forced = true; }
+      else day(k).blocks.push({ taskId: t.id, hours: remaining, forced: true });
     }
   }
   return { days, overflow };
@@ -315,6 +322,30 @@ function deadlineClusters() {
   return out.sort((a, b) => b.weight - a.weight);
 }
 
+// Suggestions, most urgent first. Each is [level, icon, html].
+function suggestions(plan) {
+  const out = [];
+  const today = todayKey();
+  const overdue = state.tasks.filter((t) => !t.done && t.due < today);
+  if (overdue.length) out.push(["bad", "i-alert", `<b>${overdue.length} overdue:</b> ${overdue.map((t) => esc(t.title)).join(", ")}. Mark them done or talk to your teacher.`]);
+  for (const [id, h] of Object.entries(plan.overflow)) {
+    const t = taskById(id);
+    out.push(["bad", "i-alert", `<b>${esc(t.title)}</b> needs ${fmtH(h)} more than your limits allow. Start early, raise a daily limit, or ask for help.`]);
+  }
+  const cl = deadlineClusters()[0];
+  if (cl) out.push(["warn", "i-layers", `<b>${cl.count} deadlines</b> between ${prettyDate(cl.start).toLowerCase()} and ${prettyDate(cl.end).toLowerCase()}. Overload moved work earlier. If it's still too much, ask about an extension.`]);
+  const recent = state.moods.slice(-3);
+  if (recent.length === 3 && recent[2].value >= 4 && recent.every((m, i) => i === 0 || m.value >= recent[i - 1].value))
+    out.push(["warn", "i-heart", "Your check-ins are trending toward tired or stressed. Protect your sleep tonight."]);
+  const todayMood = state.moods.find((m) => m.date === today);
+  if (todayMood && MOOD_CAPACITY[todayMood.value]) out.push(["good", "i-heart", `You're feeling ${MOODS[todayMood.value][1].toLowerCase()}, so today's plan was cut to ${fmtH(capacityFor(today))}.`]);
+  if (!todayMood && state.tasks.length) out.push(["", "i-heart", "Check in above. It makes your risk score more accurate."]);
+  const rest = [];
+  for (let i = 1; i < 7; i++) { const k = addDays(today, i); if (!(plan.days[k]?.load > 0)) rest.push(DAY_FULL[fromKey(k).getDay()]); }
+  if (state.tasks.some((t) => !t.done) && rest.length) out.push(["good", "i-leaf", `${rest.slice(0, 2).join(" and ")} ${rest.length === 1 ? "is a free day" : "are free days"}. Use them to recharge.`]);
+  return out;
+}
+
 /* ---------------- Rendering ---------------- */
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -329,7 +360,7 @@ function render() {
   renderPlan(plan);
   renderTasks(plan);
   renderSettings();
-  renderTaskSelects();
+  renderTaskSelect();
   renderTimer();
   renderThemeControls();
 }
@@ -340,85 +371,68 @@ function renderToday(plan, risk) {
   $("#greeting").textContent = state.name ? `${hello}, ${state.name}` : hello;
   $("#today-date").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   const st = streak();
-  $("#streak-pill").innerHTML = `${icon("i-flame", "sm")}${st ? `${st}-day streak` : "Start a streak today"}`;
+  $("#streak-pill").innerHTML = `${icon("i-flame", "sm")}${st ? `${st}-day streak` : "No streak yet"}`;
 
-  // Risk
-  const lvl = riskLevel(risk.score);
-  const C = 2 * Math.PI * 52;
-  const arc = $("#risk-arc");
-  arc.style.stroke = `var(--${lvl})`;
-  arc.style.strokeDashoffset = C * (1 - risk.score / 100);
-  $("#risk-score").textContent = risk.score;
-  $("#risk-pill").className = `pill ${lvl}`;
-  $("#risk-pill").textContent = { good: "Low risk", warn: "Moderate risk", bad: "High risk" }[lvl];
-  $("#risk-title").textContent = { good: "Your load is sustainable", warn: "Getting heavy", bad: "Burnout warning" }[lvl];
-  const top = [...risk.factors].sort((a, b) => b.value * b.w - a.value * a.w)[0];
-  $("#risk-summary").textContent = !state.tasks.some((t) => !t.done)
-    ? "Add your tasks and Overload will start tracking your workload."
-    : lvl === "good" ? "Stick to the plan and you won't need to cram." : `Biggest factor: ${top.name.toLowerCase()}. ${top.why}.`;
-  $("#factors").innerHTML = risk.factors.map((f) => {
-    const fl = f.value < 0.4 ? "good" : f.value < 0.7 ? "warn" : "bad";
-    return `<div class="factor-row"><b>${f.name}</b><em>${Math.round(f.value * f.w)} / ${f.w}</em>
-      <div class="bar ${fl}"><i style="width:${f.value * 100}%"></i></div><span class="why">${esc(f.why)}</span></div>`;
-  }).join("");
+  renderChecklist(plan);
+  $("#coming-card").classList.toggle("hidden", !state.tasks.some((t) => !t.done));
+  $("#coming-up").innerHTML = deadlineList(4);
+  renderCheckin();
+  renderRisk(plan, risk);
+}
 
-  // Today's work
+function renderChecklist(plan) {
   const today = todayKey();
   const worked = workedOn(today);
-  const todayPlan = plan.days[today] || { load: worked, blocks: [] };
-  const planned = todayPlan.load;
-  const hero = $("#today-hero");
-  hero.className = `today-hero ${worked > 0 ? "done" : ""}`;
-  hero.innerHTML = worked > 0
-    ? `<div class="badge">${icon("i-check")}</div><div class="t"><b>You worked today. Nice!</b><span class="small muted">${fmtH(worked)} logged${st > 1 ? ` · ${st} days in a row` : ""}</span></div>`
-    : `<div class="badge">${icon("i-hand")}</div><div class="t"><b>Did you study today?</b><span class="small muted">Start the timer, or log time you've already done.</span></div>
-       <button class="btn good sm" id="quick-log">${icon("i-check", "sm")}I worked today</button>`;
-  $("#today-progress-text").textContent = planned > 0 ? `${fmtH(worked)} done of ${fmtH(planned)} planned` : worked > 0 ? `${fmtH(worked)} done` : "Nothing planned today";
-  $("#today-progress-pct").textContent = planned > 0 ? `${Math.round(pct(worked, planned))}%` : "";
-  $("#today-bar").className = `bar ${worked >= planned && planned > 0 ? "good" : ""}`;
-  $("#today-bar").firstElementChild.style.width = `${planned > 0 ? pct(worked, planned) : worked > 0 ? 100 : 0}%`;
+  const blocks = plan.days[today]?.blocks || [];
+  const planned = plan.days[today]?.load || worked;
+  const left = blocks.reduce((a, b) => a + b.hours, 0);
+  const hasOpen = state.tasks.some((t) => !t.done);
 
-  $("#today-blocks").innerHTML = todayPlan.blocks.length
-    ? todayPlan.blocks.map((b) => {
-        const t = taskById(b.taskId);
-        return `<div class="blk">${dot(t)}<div class="t"><b>${esc(t.title)}</b><span>${fmtH(b.hours)} today · due ${prettyDate(t.due).toLowerCase()}${b.forced ? " · over your limit" : ""}</span>
-          <div class="bar"><i style="width:${pct(t.hours - remainingHours(t), t.hours)}%"></i></div></div>
-          <button class="go" data-focus="${t.id}" title="Focus on this">${icon("i-play", "sm")}</button></div>`;
-      }).join("")
-    : `<div class="empty">${planned > 0 ? "You've done everything planned for today. Rest up!" : state.tasks.some((t) => !t.done) ? "Nothing scheduled today. Enjoy the break." : "No tasks yet. Add some in Tasks."}</div>`;
+  $("#today-sub").textContent = blocks.length
+    ? `${blocks.length} thing${blocks.length > 1 ? "s" : ""} to do · about ${fmtH(left)} left`
+    : worked > 0 ? "All done for today. Nice work!"
+    : hasOpen ? "Nothing planned today. Enjoy the break."
+    : "Add your tasks and Overload will plan your days.";
+  const pill = $("#today-pill");
+  pill.classList.toggle("hidden", !(planned > 0));
+  pill.className = `pill ${worked >= planned && planned > 0 ? "good" : "accent"}${planned > 0 ? "" : " hidden"}`;
+  pill.textContent = `${fmtH(worked)} of ${fmtH(planned)} done`;
+  $("#today-bar").className = `bar today-meter ${worked >= planned && planned > 0 ? "good" : ""}${planned > 0 ? "" : " hidden"}`;
+  $("#today-bar").firstElementChild.style.width = `${pct(worked, planned)}%`;
 
-  const sess = state.sessions.filter((s) => s.date === today);
-  const sl = $("#today-sessions");
-  sl.classList.toggle("hidden", !sess.length);
-  sl.innerHTML = `<span class="tiny faint">LOGGED TODAY</span>` + sess.map((s) => {
-    const t = taskById(s.taskId);
-    return `<div class="sess">${icon(s.source === "timer" ? "i-clock" : "i-check", "sm")}<span class="grow">${esc(t ? t.title : "General study")}</span><span>${fmtH(s.minutes / 60)}</span>
-      <button class="x-btn" data-del-session="${s.id}" title="Remove">${icon("i-x", "sm")}</button></div>`;
-  }).join("");
+  const rows = blocks.map((b) => {
+    const t = taskById(b.taskId);
+    return `<div class="todo-row">
+      <button class="check" data-check="${t.id}" data-hours="${b.hours}" title="I did this" aria-label="Mark ${esc(t.title)} done for today">${icon("i-check")}</button>
+      <div class="t"><b>${dot(t)}<span>${esc(t.title)}</span></b><small>${fmtH(b.hours)} · ${TYPES[t.type].label.toLowerCase()} due ${prettyDate(t.due).toLowerCase()}${b.forced ? " · over your limit" : ""}</small></div>
+      <button class="icon-btn play" data-focus="${t.id}" title="Start focus timer" aria-label="Focus on ${esc(t.title)}">${icon("i-play", "sm")}</button>
+    </div>`;
+  });
 
-  renderCheckin();
-  renderChart(plan);
+  // Work already logged today shows as checked-off rows.
+  const byTask = {};
+  for (const s of state.sessions.filter((x) => x.date === today)) byTask[s.taskId || ""] = (byTask[s.taskId || ""] || 0) + s.minutes;
+  for (const [id, minutes] of Object.entries(byTask)) {
+    const t = taskById(id);
+    rows.push(`<div class="todo-row done">
+      <span class="check on">${icon("i-check")}</span>
+      <div class="t"><b>${t ? dot(t) : ""}<span>${esc(t ? t.title : "Other work")}</span></b><small>${fmtH(minutes / 60)} done today</small></div>
+      <button class="icon-btn" data-undo="${id}" title="Undo" aria-label="Undo">${icon("i-undo", "sm")}</button>
+    </div>`);
+  }
 
-  // Upcoming
-  const up = state.tasks.filter((t) => !t.done && t.due >= today).sort((a, b) => a.due.localeCompare(b.due)).slice(0, 6);
-  $("#upcoming").innerHTML = up.length
-    ? up.map((t) => {
-        const d = diffDays(today, t.due);
-        return `<div class="up">${dot(t)}<div class="t"><b>${esc(t.title)}</b><span>${TYPES[t.type].label} · ${fmtH(remainingHours(t))} left</span></div>
-          <span class="pill ${d <= 1 ? "bad" : d <= 3 ? "warn" : ""}">${prettyDate(t.due)}</span></div>`;
-      }).join("")
-    : `<div class="empty">Nothing due. Add tasks to get started.</div>`;
-
-  $("#insights").innerHTML = insights(plan, risk).map(([cls, ic, text]) => `<li class="${cls}"><span class="ic">${icon(ic, "sm")}</span><span>${text}</span></li>`).join("");
+  $("#todo").innerHTML = rows.length ? rows.join("") : hasOpen
+    ? `<div class="empty">${icon("i-leaf")}Nothing scheduled today. Overload planned your work for other days.</div>`
+    : `<div class="empty">Add your tests and assignments, and Overload will build a plan for you.<button class="btn primary" data-new-task>${icon("i-plus")}Add your first task</button></div>`;
 }
 
 function renderCheckin() {
   const today = todayKey();
   const todayMood = state.moods.find((m) => m.date === today);
   document.querySelectorAll(".mood").forEach((b) => b.classList.toggle("on", !!todayMood && +b.dataset.mood === todayMood.value));
-  $("#checkin-status").textContent = todayMood ? "Checked in today ✓" : "How are you feeling?";
+  $("#checkin-status").textContent = todayMood ? "Checked in ✓" : "";
 
-  // 14-day strip: always 14 cells so it's never empty, even on day one.
+  // Always 14 cells, so it's never empty, even on day one.
   const keys = Array.from({ length: 14 }, (_, i) => addDays(today, i - 13));
   const hours = keys.map(workedOn);
   const maxH = Math.max(2, ...hours);
@@ -433,32 +447,130 @@ function renderCheckin() {
       <span class="d">${d.getDate()}</span></div>`;
   }).join("");
 
-  const inWindow = state.moods.filter((m) => keys.includes(m.date));
-  const avg = inWindow.length ? inWindow.reduce((a, m) => a + m.value, 0) / inWindow.length : null;
   const total = hours.reduce((a, b) => a + b, 0);
-  $("#stats").innerHTML = [
-    [streak() || 0, "day streak"],
-    [`${inWindow.length}/14`, "check-ins"],
-    [avg ? MOODS[Math.round(avg)][0] : "–", "average mood"],
-    [fmtH(total), "worked"],
-  ].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+  const st = streak();
+  $("#hist-summary").textContent = total > 0 ? `${fmtH(total)} worked${st > 1 ? ` · ${st}-day streak` : ""}` : "";
 
-  let note;
+  const inWindow = state.moods.filter((m) => keys.includes(m.date));
   const first = [...state.moods.map((m) => m.date), ...state.sessions.map((s) => s.date)].sort()[0];
+  let note;
   if (!first || diffDays(first, today) < 2) {
-    note = `${icon("i-sparkle", "sm")}<span>Welcome! Check in and log your work each day. Your trend will build up here.</span>`;
+    note = `${icon("i-sparkle", "sm")}<span>Day one! Check in and tick off your work each day, and your history will fill in here.</span>`;
   } else if (inWindow.length >= 4) {
     const half = Math.floor(inWindow.length / 2);
-    const a = inWindow.slice(0, half), b = inWindow.slice(half);
-    const delta = b.reduce((s, m) => s + m.value, 0) / b.length - a.reduce((s, m) => s + m.value, 0) / a.length;
-    note = delta > 0.4 ? `${icon("i-alert", "sm")}<span>Your stress has been rising lately. Your plan is lighter on days you check in tired.</span>`
-      : delta < -0.4 ? `${icon("i-heart", "sm")}<span>Your mood is improving. Whatever you're doing, keep it up.</span>`
+    const avg = (a) => a.reduce((s, m) => s + m.value, 0) / a.length;
+    const delta = avg(inWindow.slice(half)) - avg(inWindow.slice(0, half));
+    note = delta > 0.4 ? `${icon("i-alert", "sm")}<span>Your stress has been rising lately. On days you check in tired, your plan gets lighter.</span>`
+      : delta < -0.4 ? `${icon("i-heart", "sm")}<span>Your mood is improving. Keep it up.</span>`
       : `${icon("i-heart", "sm")}<span>Your mood has been steady over the last two weeks.</span>`;
   } else {
     note = `${icon("i-sparkle", "sm")}<span>A few more check-ins and Overload can show your stress trend.</span>`;
   }
   $("#hist-note").innerHTML = note;
-  $("#trend-text").textContent = todayMood ? `Today: ${MOODS[todayMood.value][1]}` : "";
+}
+
+function renderRisk(plan, risk) {
+  const lvl = riskLevel(risk.score);
+  const C = 2 * Math.PI * 52;
+  const arc = $("#risk-arc");
+  arc.style.stroke = `var(--${lvl})`;
+  arc.style.strokeDashoffset = C * (1 - risk.score / 100);
+  $("#risk-score").textContent = risk.score;
+  $("#risk-pill").className = `pill ${lvl}`;
+  $("#risk-pill").textContent = { good: "Low", warn: "Moderate", bad: "High" }[lvl];
+  const hasOpen = state.tasks.some((t) => !t.done);
+  $("#risk-title").textContent = !hasOpen ? "Nothing to measure yet" : { good: "Your load is manageable", warn: "Getting heavy", bad: "Burnout warning" }[lvl];
+  const top = [...risk.factors].sort((a, b) => b.value * b.w - a.value * a.w)[0];
+  $("#risk-summary").textContent = !hasOpen ? "Add tasks and this score will track how heavy your week is."
+    : lvl === "good" ? "Stick to the plan and you won't need to cram." : `Biggest factor: ${top.why.charAt(0).toLowerCase() + top.why.slice(1)}.`;
+  $("#tips").innerHTML = suggestions(plan).slice(0, 2).map(([cls, ic, text]) => `<li class="${cls}">${icon(ic, "sm")}<span>${text}</span></li>`).join("");
+  $("#factors").innerHTML = risk.factors.map((f) => {
+    const fl = f.value < 0.4 ? "good" : f.value < 0.7 ? "warn" : "bad";
+    return `<div class="factor-row"><b>${f.name}</b><em>${Math.round(f.value * f.w)} / ${f.w}</em>
+      <div class="bar ${fl}"><i style="width:${f.value * 100}%"></i></div><span class="why">${esc(f.why)}</span></div>`;
+  }).join("");
+}
+
+function renderPlan(plan) {
+  const today = todayKey();
+  const dueOn = {};
+  state.tasks.forEach((t) => { if (!t.done) (dueOn[t.due] ||= []).push(t); });
+
+  // Group the next 14 days into "This week" (until Sunday), "Next week", "Later".
+  const keys = Array.from({ length: HORIZON }, (_, i) => addDays(today, i));
+  const daysToSunday = (7 - fromKey(today).getDay()) % 7;
+  const group = (i) => (i <= daysToSunday ? "This week" : i <= daysToSunday + 7 ? "Next week" : "Later");
+  const groups = [];
+  keys.forEach((k, i) => {
+    const g = group(i);
+    if (!groups.length || groups[groups.length - 1].name !== g) groups.push({ name: g, keys: [] });
+    groups[groups.length - 1].keys.push(k);
+  });
+
+  const isRest = (k) => !(plan.days[k]?.blocks.length) && !dueOn[k] && !(k === today && workedOn(k) > 0);
+  let html = "";
+  for (const g of groups) {
+    const hours = g.keys.reduce((a, k) => a + (plan.days[k]?.load || 0), 0);
+    html += `<div class="week-label"><h2>${g.name}</h2><span class="small faint">${fmtH(hours)} planned</span></div><div class="agenda">`;
+    for (let i = 0; i < g.keys.length; i++) {
+      const k = g.keys[i];
+      if (isRest(k)) {
+        // Merge a run of consecutive rest days into one line.
+        let j = i;
+        while (j + 1 < g.keys.length && isRest(g.keys[j + 1])) j++;
+        const a = fromKey(k), b = fromKey(g.keys[j]);
+        const label = i === j ? `${DAY_FULL[a.getDay()]} ${a.getDate()}` : `${DAY_NAMES[a.getDay()]} ${a.getDate()} – ${DAY_NAMES[b.getDay()]} ${b.getDate()}`;
+        html += `<div class="ag-rest">${icon("i-leaf", "sm")}${label} · ${i === j ? "Rest day" : "Rest days"}</div>`;
+        i = j;
+        continue;
+      }
+      const d = plan.days[k] || { load: 0, blocks: [] };
+      const c = capacityFor(k);
+      const dt = fromKey(k);
+      const over = d.load > c + 1e-9;
+      const lightened = c < state.capacity[dt.getDay()];
+      const name = k === today ? "Today" : diffDays(today, k) === 1 ? "Tomorrow" : DAY_FULL[dt.getDay()];
+      const items = [
+        ...(dueOn[k] || []).map((t) => `<div class="ag-item due">${dot(t)}<span class="name">${esc(t.title)}</span><span class="tag">Due</span></div>`),
+        ...(k === today && workedOn(k) > 0 ? [`<div class="ag-item done">${icon("i-check", "sm")}<span class="name">${fmtH(workedOn(k))} done</span></div>`] : []),
+        ...d.blocks.map((b) => {
+          const t = taskById(b.taskId);
+          return `<div class="ag-item ${b.forced ? "over" : ""}">${dot(t)}<span class="name">${esc(t.title)}</span><span class="hrs">${fmtH(b.hours)}${b.forced ? " · over limit" : ""}</span></div>`;
+        }),
+      ];
+      html += `<div class="ag-day ${k === today ? "today" : ""}">
+        <div class="ag-date"><span>${DAY_NAMES[dt.getDay()]}</span><b>${dt.getDate()}</b></div>
+        <div class="ag-main">
+          <div class="ag-top"><b>${name}</b>
+            <span class="ag-load">${fmtH(d.load)} of ${fmtH(c)}<span class="bar ${over ? "bad" : ""}"><i style="width:${c ? pct(d.load, c) : 100}%"></i></span></span></div>
+          ${lightened ? `<span class="small faint">Lighter today because you checked in ${MOODS[state.moods.find((m) => m.date === k).value][1].toLowerCase()}.</span>` : ""}
+          <div class="ag-items">${items.join("")}</div>
+        </div></div>`;
+    }
+    html += `</div>`;
+  }
+  if (!state.tasks.some((t) => !t.done)) {
+    html = `<div class="card"><div class="empty">${icon("i-calendar")}Your plan will appear here once you add tasks.<button class="btn primary" data-new-task>${icon("i-plus")}Add a task</button></div></div>`;
+  }
+  $("#agenda").innerHTML = html;
+
+  $("#deadlines").innerHTML = deadlineList(8);
+  renderChart(plan);
+}
+
+function deadlineList(limit) {
+  const today = todayKey();
+  const open = state.tasks.filter((t) => !t.done).sort((a, b) => a.due.localeCompare(b.due)).slice(0, limit);
+  return open.length
+    ? open.map((t) => {
+        const days = diffDays(today, t.due);
+        const done = t.hours - remainingHours(t);
+        return `<div class="dl"><div class="dl-top">${dot(t)}<b>${esc(t.title)}</b>
+          <span class="pill ${days < 0 ? "bad" : days <= 1 ? "bad" : days <= 3 ? "warn" : ""}">${days < 0 ? "Overdue" : prettyDate(t.due)}</span></div>
+          <small>${TYPES[t.type].label} · ${fmtH(remainingHours(t))} left</small>
+          <div class="bar thin ${done >= t.hours ? "good" : ""}"><i style="width:${pct(done, t.hours)}%"></i></div></div>`;
+      }).join("")
+    : `<div class="empty">No deadlines yet.</div>`;
 }
 
 function renderChart(plan) {
@@ -485,64 +597,7 @@ function renderChart(plan) {
   const planPeak = Math.max(0, ...keys.map((k) => plan.days[k]?.load || 0));
   const co = $("#callout");
   co.classList.toggle("hidden", !(naivePeak > 0 && planPeak < naivePeak));
-  co.lastElementChild.innerHTML = `Cramming would make your busiest day <b>${fmtH(naivePeak)}</b>. With Overload it's <b>${fmtH(planPeak)}</b>, which is <b>${Math.round((1 - planPeak / Math.max(naivePeak, 0.01)) * 100)}% lighter</b>.`;
-}
-
-function insights(plan, risk) {
-  const out = [];
-  const today = todayKey();
-  const overdue = state.tasks.filter((t) => !t.done && t.due < today);
-  if (overdue.length) out.push(["bad", "i-alert", `<b>${overdue.length} overdue:</b> ${overdue.map((t) => esc(t.title)).join(", ")}. Mark them done or talk to your teacher.`]);
-
-  const cl = deadlineClusters()[0];
-  if (cl) out.push(["warn", "i-layers", `<b>Deadline pile-up:</b> ${cl.count} tasks due between ${prettyDate(cl.start)} and ${prettyDate(cl.end)}. Overload has moved work earlier. If it's still too much, ask about an extension.`]);
-
-  for (const [id, h] of Object.entries(plan.overflow)) {
-    const t = taskById(id);
-    out.push(["bad", "i-alert", `<b>${esc(t.title)}</b> needs ${fmtH(h)} more than your limits allow before ${prettyDate(t.due).toLowerCase()}. Start now, raise a daily limit, or ask for help.`]);
-  }
-
-  const recent = state.moods.slice(-3);
-  if (recent.length === 3 && recent[2].value >= 4 && recent.every((m, i) => i === 0 || m.value >= recent[i - 1].value))
-    out.push(["warn", "i-heart", "Your check-ins are trending toward tired or stressed. Protect your sleep tonight. A rested brain studies faster."]);
-
-  const todayMood = state.moods.find((m) => m.date === today);
-  if (todayMood && MOOD_CAPACITY[todayMood.value]) out.push(["good", "i-heart", `You're feeling ${MOODS[todayMood.value][1].toLowerCase()}, so today's limit was lowered to ${fmtH(capacityFor(today))} and the rest was moved to later days.`]);
-
-  const rest = [];
-  for (let i = 1; i < 7; i++) { const k = addDays(today, i); if (!(plan.days[k]?.load > 0)) rest.push(prettyDate(k)); }
-  if (state.tasks.some((t) => !t.done) && rest.length) out.push(["good", "i-leaf", `<b>Free days:</b> ${rest.slice(0, 3).join(", ")}. Use them to recharge.`]);
-
-  if (!todayMood) out.push(["", "i-hand", "Do today's check-in. It makes your Burnout Risk Index more accurate."]);
-  if (!state.tasks.length) out.push(["", "i-sparkle", `Add your first assignment in <a href="#tasks" data-goto="tasks">Tasks</a>, or try the <a href="#settings" data-goto="settings">demo data</a>.`]);
-  else if (risk.score < 35 && !out.some((o) => o[0] === "bad")) out.push(["good", "i-check", "Your workload looks sustainable. Follow the plan and you won't have to cram."]);
-  return out;
-}
-
-function renderPlan(plan) {
-  const today = todayKey();
-  const dueOn = {};
-  state.tasks.forEach((t) => { if (!t.done) (dueOn[t.due] ||= []).push(t); });
-  $("#days").innerHTML = Array.from({ length: HORIZON }, (_, i) => addDays(today, i)).map((k) => {
-    const d = plan.days[k] || { load: 0, blocks: [] };
-    const c = capacityFor(k);
-    const worked = k === today ? workedOn(k) : 0;
-    const lightened = c < state.capacity[fromKey(k).getDay()];
-    const dues = (dueOn[k] || []).map((t) => `<div class="pb due">${dot(t)}<div class="t"><b>Due: ${esc(t.title)}</b><span>${TYPES[t.type].label}</span></div></div>`).join("");
-    const doneBlock = worked > 0 ? `<div class="pb done">${icon("i-check", "sm")}<div class="t"><b>${fmtH(worked)} done</b><span>logged today</span></div></div>` : "";
-    const blocks = d.blocks.map((b) => {
-      const t = taskById(b.taskId);
-      return `<div class="pb">${dot(t)}<div class="t"><b>${esc(t.title)}</b><span>${fmtH(b.hours)}${b.forced ? " · over limit" : ""} · due ${prettyDate(t.due).toLowerCase()}</span></div>
-        ${k === today ? `<button class="go" data-focus="${t.id}" title="Focus on this">${icon("i-play", "sm")}</button>` : ""}</div>`;
-    }).join("");
-    const over = d.load > c + 1e-9;
-    return `<div class="day ${k === today ? "today" : ""}">
-      <div class="day-head"><b>${prettyDate(k)}</b><span class="small faint">${fmtH(d.load)} / ${fmtH(c)}</span></div>
-      <div class="bar ${over ? "bad" : ""}"><i style="width:${c ? pct(d.load, c) : d.load ? 100 : 0}%"></i></div>
-      ${lightened ? `<span class="note-lite">Lighter today because you checked in ${MOODS[state.moods.find((m) => m.date === k).value][1].toLowerCase()}</span>` : ""}
-      ${dues}${doneBlock}${blocks || (dues || doneBlock ? "" : `<div class="rest">${icon("i-leaf", "sm")}Rest day</div>`)}
-    </div>`;
-  }).join("");
+  co.lastElementChild.innerHTML = `Cramming would make your busiest day <b>${fmtH(naivePeak)}</b>. Your plan keeps it to <b>${fmtH(planPeak)}</b>.`;
 }
 
 function renderTasks(plan) {
@@ -552,31 +607,29 @@ function renderTasks(plan) {
     ? list.map((t) => {
         const done = t.hours - remainingHours(t);
         return `<div class="task ${t.done ? "done" : ""}">
-          <input type="checkbox" data-done="${t.id}" ${t.done ? "checked" : ""} aria-label="Mark complete" />
+          <input type="checkbox" data-done="${t.id}" ${t.done ? "checked" : ""} aria-label="Mark complete" title="Mark complete" />
           <div>
             <div class="tt">${dot(t)}${esc(t.title)}<span class="pill">${TYPES[t.type].label}</span></div>
-            <div class="meta">${t.subject ? esc(t.subject) + " · " : ""}Due ${prettyDate(t.due).toLowerCase()} · ${fmtH(done)} of ${fmtH(t.hours)} done · difficulty ${t.difficulty}/5</div>
+            <div class="meta">${t.subject ? esc(t.subject) + " · " : ""}Due ${prettyDate(t.due).toLowerCase()} · ${fmtH(done)} of ${fmtH(t.hours)} done</div>
             <div class="bar ${done >= t.hours ? "good" : ""}"><i style="width:${pct(done, t.hours)}%"></i></div>
             ${plan.overflow[t.id] ? `<div class="warn-line">${icon("i-alert", "sm")}${fmtH(plan.overflow[t.id])} more than your daily limits allow</div>` : ""}
           </div>
           <div class="task-actions">
-            ${t.done ? "" : `<button class="btn ghost sm" data-focus="${t.id}" title="Focus on this">${icon("i-play", "sm")}</button>`}
-            <button class="btn ghost sm" data-edit="${t.id}" title="Edit">${icon("i-edit", "sm")}</button>
-            <button class="btn ghost sm" data-del="${t.id}" title="Delete">${icon("i-trash", "sm")}</button>
+            ${t.done ? "" : `<button class="icon-btn" data-focus="${t.id}" title="Start focus timer">${icon("i-play", "sm")}</button>`}
+            <button class="icon-btn" data-edit="${t.id}" title="Edit">${icon("i-edit", "sm")}</button>
+            <button class="icon-btn danger" data-del="${t.id}" title="Delete">${icon("i-trash", "sm")}</button>
           </div></div>`;
       }).join("")
-    : `<div class="empty">No tasks yet. Add your first one above.</div>`;
+    : `<div class="empty">No tasks yet.<button class="btn primary" data-new-task>${icon("i-plus")}Add your first task</button></div>`;
   $("#subjects").innerHTML = [...new Set(state.tasks.map((t) => t.subject).filter(Boolean))].map((s) => `<option value="${esc(s)}">`).join("");
 }
 
-function renderTaskSelects() {
+function renderTaskSelect() {
   const open = state.tasks.filter((t) => !t.done).sort((a, b) => a.due.localeCompare(b.due));
-  const opts = `<option value="">General study</option>` + open.map((t) => `<option value="${t.id}">${esc(t.title)}</option>`).join("");
-  for (const sel of [$("#timer-task"), $("#log-task")]) {
-    const v = sel === $("#timer-task") && state.timer ? state.timer.taskId || "" : sel.value;
-    sel.innerHTML = opts;
-    sel.value = open.some((t) => t.id === v) ? v : "";
-  }
+  const sel = $("#log-task");
+  const v = sel.value;
+  sel.innerHTML = `<option value="">Something else</option>` + open.map((t) => `<option value="${t.id}">${esc(t.title)}</option>`).join("");
+  sel.value = open.some((t) => t.id === v) ? v : "";
 }
 
 function renderSettings() {
@@ -584,111 +637,122 @@ function renderSettings() {
   $("#s-name").value = state.name;
   $("#s-break").value = state.prefs.breakMin;
   $("#s-sound").checked = state.prefs.sound;
+  document.querySelectorAll("#s-focus button").forEach((b) => b.classList.toggle("on", +b.dataset.min === state.prefs.focusMin));
   $("#capacity").innerHTML = [1, 2, 3, 4, 5, 6, 0]
     .map((i) => `<label class="field">${DAY_NAMES[i]}<input type="number" min="0" max="12" step="0.5" data-cap="${i}" value="${state.capacity[i]}" /></label>`).join("");
   $("#ai-dot").classList.toggle("on", !!AI_ENDPOINT);
-  $("#ai-status").textContent = AI_ENDPOINT ? "Connected. AI estimates are on." : "Not connected. Using the built-in estimator.";
+  $("#ai-status").textContent = AI_ENDPOINT ? "Connected. AI estimates are on." : "Not connected yet. Using the built-in estimator.";
 }
 
 /* ---------------- 7. Focus timer ---------------- */
-// Stored as timestamps so it keeps time across tab switches and reloads.
-// timer = { phase: "focus"|"break", taskId, duration (s), endsAt (ms) | null, left (s, when paused) }
+// Lives inside the Today card. Stored as timestamps so it keeps time across
+// tab switches and reloads.
+// timer = { phase: "focus"|"break", taskId, duration (s), left (s), endsAt (ms)|null, started, note }
 let tickHandle = null;
 
 function timerLeft() {
   const t = state.timer;
-  if (!t) return state.prefs.focusMin * 60;
+  if (!t) return 0;
   return t.endsAt ? Math.max(0, (t.endsAt - Date.now()) / 1000) : t.left;
 }
+function openFocus(taskId) {
+  if (state.timer?.started && state.timer.phase === "focus") {
+    toast("You already have a focus session going.");
+  } else {
+    const s = state.prefs.focusMin * 60;
+    state.timer = { phase: "focus", taskId: taskId || null, duration: s, left: s, endsAt: null, started: false };
+    persist(); renderTimer();
+  }
+  goto("today");
+  $("#today-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 function timerStart() {
-  if (!state.timer) state.timer = { phase: "focus", taskId: $("#timer-task").value || null, duration: state.prefs.focusMin * 60, left: state.prefs.focusMin * 60, endsAt: null };
   const t = state.timer;
-  if (t.phase === "focus") t.taskId = $("#timer-task").value || null;
+  t.started = true;
+  t.note = "";
   t.endsAt = Date.now() + t.left * 1000;
   askNotify();
   persist(); renderTimer(); startTicking();
 }
 function timerPause() {
   const t = state.timer;
-  if (!t?.endsAt) return;
   t.left = timerLeft(); t.endsAt = null;
   persist(); renderTimer();
 }
+// Ends a focus session and saves the time worked. completed = the clock ran out.
 function timerFinish(completed) {
   const t = state.timer;
-  if (!t) return;
   const elapsed = t.duration - (completed ? 0 : timerLeft());
-  let msg = "";
-  if (t.phase === "focus" && elapsed >= 60) {
-    const date = completed && t.endsAt ? toKey(new Date(t.endsAt)) : todayKey();
-    logSession(t.taskId, elapsed / 60, "timer", date);
-    msg = `Saved ${fmtH(elapsed / 3600)} of focus${t.taskId && taskById(t.taskId) ? ` on ${taskById(t.taskId).title}` : ""}.`;
-  } else if (t.phase === "focus") {
-    msg = "Session under a minute, so nothing was saved.";
-  }
-  if (completed) {
-    chime();
-    if (t.phase === "focus") {
-      notify("Focus session done!", `Nice work. Take a ${state.prefs.breakMin}-minute break.`);
-      state.timer = { phase: "break", taskId: t.taskId, duration: state.prefs.breakMin * 60, left: state.prefs.breakMin * 60, endsAt: null };
-      msg += " Time for a break.";
-    } else {
-      notify("Break's over", "Ready for another focus session?");
-      state.timer = null;
-      msg = "Break's over. Ready when you are.";
-    }
-  } else {
+  if (elapsed < 60) {
     state.timer = null;
+    save();
+    toast("That was under a minute, so nothing was saved.");
+    return;
   }
+  const date = completed && t.endsAt ? toKey(new Date(t.endsAt)) : todayKey();
+  logSession(t.taskId, elapsed / 60, "timer", date);
+  const title = taskById(t.taskId)?.title;
+  if (completed) { chime(); notify("Focus session done!", `Nice work. Take a ${state.prefs.breakMin}-minute break.`); }
+  const b = state.prefs.breakMin * 60;
+  state.timer = { phase: "break", taskId: t.taskId, duration: b, left: b, endsAt: null, started: false,
+    note: `Saved ${fmtH(elapsed / 3600)}${title ? ` on ${title}` : ""}. Nice work!` };
   save();
-  if (msg) toast(msg);
+}
+function breakDone() {
+  chime();
+  notify("Break's over", "Ready for the next thing?");
+  state.timer = null;
+  save();
+  toast("Break's over. Ready when you are.");
 }
 function startTicking() {
   clearInterval(tickHandle);
   tickHandle = setInterval(() => {
     if (!state.timer?.endsAt) { clearInterval(tickHandle); return; }
-    if (timerLeft() <= 0) { clearInterval(tickHandle); timerFinish(true); return; }
+    if (timerLeft() <= 0) {
+      clearInterval(tickHandle);
+      state.timer.phase === "focus" ? timerFinish(true) : breakDone();
+      return;
+    }
     renderTimer();
   }, 500);
 }
 function renderTimer() {
   const t = state.timer;
-  const running = !!t?.endsAt;
-  const left = timerLeft();
-  const duration = t ? t.duration : state.prefs.focusMin * 60;
-  const isBreak = t?.phase === "break";
-  $("#timer-time").textContent = fmtClock(Math.ceil(left));
-  $("#timer-phase").textContent = !t ? "Ready to focus" : isBreak ? (running ? "Break" : "Break ready") : running ? "Focusing" : "Paused";
-  $("#timer-ring").classList.toggle("break", isBreak);
-  const C = 2 * Math.PI * 54;
-  $("#timer-arc").style.strokeDashoffset = C * (1 - left / duration);
-  $("#timer-main").innerHTML = running ? `${icon("i-pause")}Pause` : t && t.left < t.duration ? `${icon("i-play")}Resume` : `${icon("i-play")}${isBreak ? "Start break" : "Start focus"}`;
-  $("#timer-stop").innerHTML = isBreak ? `${icon("i-x")}Skip break` : `${icon("i-check")}Finish &amp; save`;
-  $("#timer-stop").disabled = !t;
-  $("#timer-task").disabled = !!t && !isBreak;
-  document.querySelectorAll("#timer-presets button").forEach((b) => {
-    b.disabled = !!t && (running || t.left < t.duration);
-    b.classList.toggle("on", b.dataset.break ? isBreak : !isBreak && +b.dataset.min === Math.round(duration / 60));
-  });
-  const focusedToday = state.sessions.filter((s) => s.date === todayKey() && s.source === "timer");
-  const weekStart = addDays(todayKey(), -6);
-  const week = state.sessions.filter((s) => s.date >= weekStart && s.source === "timer");
-  const longest = Math.max(0, ...state.sessions.filter((s) => s.source === "timer").map((s) => s.minutes));
-  const fs = [
-    [fmtH(focusedToday.reduce((a, s) => a + s.minutes, 0) / 60), "focused today"],
-    [focusedToday.length, focusedToday.length === 1 ? "session today" : "sessions today"],
-    [fmtH(week.reduce((a, s) => a + s.minutes, 0) / 60), "focused this week"],
-    [fmtH(longest / 60), "longest session"],
-  ].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
-  if ($("#focus-stats").innerHTML !== fs) $("#focus-stats").innerHTML = fs;
-  $("#timer-note").textContent = focusedToday.length
-    ? `${fmtH(focusedToday.reduce((a, s) => a + s.minutes, 0) / 60)} focused today across ${focusedToday.length} session${focusedToday.length > 1 ? "s" : ""}.`
-    : "Focus sessions are saved to your work log automatically.";
+  $("#list-mode").classList.toggle("hidden", !!t);
+  $("#focus-mode").classList.toggle("hidden", !t);
   document.querySelectorAll("[data-timer-pill]").forEach((p) => {
-    p.classList.toggle("hidden", !t || (!running && t.left === t.duration));
-    p.classList.toggle("paused", !running);
-    p.innerHTML = `<span class="dot"></span>${isBreak ? "Break" : "Focus"} ${fmtClock(Math.ceil(left))}`;
+    p.classList.toggle("hidden", !t?.started);
+    if (t?.started) {
+      p.classList.toggle("paused", !t.endsAt);
+      p.innerHTML = `<span class="dot"></span>${t.phase === "break" ? "Break" : "Focus"} ${fmtClock(Math.ceil(timerLeft()))}`;
+    }
   });
+  if (!t) { document.title = "Overload"; return; }
+
+  const running = !!t.endsAt;
+  const left = timerLeft();
+  const isBreak = t.phase === "break";
+  $("#focus-label").textContent = isBreak ? "Break time" : t.started ? "Focusing on" : "Ready to focus on";
+  $("#focus-title").textContent = isBreak ? "Step away from the screen" : taskById(t.taskId)?.title || "General study";
+  $("#focus-len").classList.toggle("hidden", isBreak || t.started);
+  document.querySelectorAll("#focus-len button").forEach((b) => b.classList.toggle("on", +b.dataset.min * 60 === t.duration));
+  $("#saved-note").classList.toggle("hidden", !t.note);
+  $("#saved-note").innerHTML = t.note ? `${icon("i-check", "sm")}${esc(t.note)}` : "";
+  $("#timer-time").textContent = fmtClock(Math.ceil(left));
+  $("#timer-phase").textContent = isBreak ? (running ? "Break" : t.started ? "Paused" : `${t.duration / 60} min break`) : running ? "Focusing" : t.started ? "Paused" : "Ready";
+  $("#timer-ring").classList.toggle("break", isBreak);
+  $("#timer-arc").style.strokeDashoffset = 2 * Math.PI * 54 * (1 - left / t.duration);
+
+  const main = $("#timer-main"), second = $("#timer-second"), third = $("#timer-third");
+  main.innerHTML = running ? `${icon("i-pause")}Pause` : t.started ? `${icon("i-play")}Resume` : `${icon("i-play")}${isBreak ? "Start break" : "Start"}`;
+  if (isBreak) {
+    second.innerHTML = t.started ? "Skip break" : "Back to my plan";
+  } else {
+    second.innerHTML = t.started ? `${icon("i-check")}Done, save time` : "Cancel";
+  }
+  third.classList.toggle("hidden", isBreak || !t.started);
+  third.textContent = "Discard this session";
   document.title = running ? `${fmtClock(Math.ceil(left))} · ${isBreak ? "Break" : "Focus"} · Overload` : "Overload";
 }
 
@@ -716,6 +780,102 @@ function notify(title, body) {
   try { if ("Notification" in window && Notification.permission === "granted" && document.hidden) new Notification(title, { body }); } catch (e) { /* ignore */ }
 }
 
+/* ---------------- 8. Welcome tour ---------------- */
+let tourStep = 0;
+let tourData = {};
+const TOUR_STEPS = 5;
+
+function openTour() {
+  tourStep = 0;
+  tourData = { name: state.name, weekday: state.capacity[1], weekend: state.capacity[6] };
+  $("#tour").classList.remove("hidden");
+  renderTour();
+}
+function closeTour(choice) {
+  state.name = (tourData.name || "").trim();
+  for (const d of [1, 2, 3, 4, 5]) state.capacity[d] = tourData.weekday;
+  state.capacity[0] = state.capacity[6] = tourData.weekend;
+  state.onboarded = true;
+  $("#tour").classList.add("hidden");
+  if (choice === "demo") { loadDemo(); goto("today"); toast("Example data loaded. Erase it anytime in Settings."); }
+  else if (choice === "task") { save(); openTaskForm(); }
+  else { save(); goto("today"); }
+}
+function renderTour() {
+  const body = $("#tour-body");
+  const point = (ic, title, text) => `<div class="tour-point"><span class="ic">${ic}</span><div><b>${title}</b><span>${text}</span></div></div>`;
+  const steps = [
+    () => `<span class="brand-mark tour-hero">${icon("i-bolt")}</span>
+      <h2 id="tour-title">Welcome to Overload</h2>
+      <p>Overload plans your schoolwork so no single day gets overwhelming, and warns you before burnout hits.</p>
+      <div class="tour-points">
+        ${point(icon("i-calendar"), "Spreads out your work", "Your study time gets split across the days before each deadline.")}
+        ${point(icon("i-shield"), "Warns you early", "A burnout risk score shows when your week is getting too heavy.")}
+        ${point(icon("i-heart"), "Checks in on you", "Feeling tired? Your plan gets lighter that day.")}
+      </div>`,
+    () => `<h2 id="tour-title">What should we call you?</h2>
+      <p>Just your first name. It stays on this device.</p>
+      <input class="tour-input" id="tour-name" placeholder="Your first name" autocomplete="given-name" maxlength="30" value="${esc(tourData.name)}" />`,
+    () => `<h2 id="tour-title">How much can you study in a day?</h2>
+      <p>Be realistic and leave time for sleep, sports and friends. Overload will never plan more than this.</p>
+      <div class="slider-row"><div class="top">School days <span id="tour-wd-out">${fmtH(tourData.weekday)}</span></div>
+        <input type="range" id="tour-wd" min="0.5" max="6" step="0.5" value="${tourData.weekday}" aria-label="Hours on school days" /></div>
+      <div class="slider-row"><div class="top">Weekends <span id="tour-we-out">${fmtH(tourData.weekend)}</span></div>
+        <input type="range" id="tour-we" min="0" max="8" step="0.5" value="${tourData.weekend}" aria-label="Hours on weekends" /></div>
+      <p class="small faint">You can change this per day later in Settings.</p>`,
+    () => `<h2 id="tour-title">How it works</h2>
+      <div class="tour-points">
+        ${point(`<span class="num">1</span>`, "Add your tasks", "Tests, essays and projects, with due dates. Overload estimates how long each takes.")}
+        ${point(`<span class="num">2</span>`, "Follow today's plan", "Each day you get a short checklist. Tick things off, or press ▶ to use the focus timer.")}
+        ${point(`<span class="num">3</span>`, "Check in daily", "Tap how you feel. Overload watches your stress and workload and warns you before it's too much.")}
+      </div>`,
+    () => `<h2 id="tour-title">You're all set${tourData.name ? `, ${esc(tourData.name.trim())}` : ""}!</h2>
+      <p>Start by adding what's due, or look around with example data first.</p>
+      <div class="tour-choices">
+        <button class="btn primary lg block" data-tour-end="task">${icon("i-plus")}Add my first task</button>
+        <button class="btn soft lg block" data-tour-end="demo">Explore with example data</button>
+        <button class="btn ghost block" data-tour-end="empty">Start with an empty plan</button>
+      </div>`,
+  ];
+  body.innerHTML = steps[tourStep]();
+  body.style.animation = "none"; void body.offsetWidth; body.style.animation = "";
+  $("#tour-dots").innerHTML = Array.from({ length: TOUR_STEPS }, (_, i) => `<i class="${i === tourStep ? "on" : ""}"></i>`).join("");
+  const back = $("#tour-back"), next = $("#tour-next");
+  back.textContent = tourStep === 0 ? "Skip" : "Back";
+  next.classList.toggle("hidden", tourStep === TOUR_STEPS - 1);
+  next.textContent = tourStep === 0 ? "Get started" : "Next";
+
+  const name = $("#tour-name");
+  if (name) {
+    name.addEventListener("input", () => (tourData.name = name.value));
+    name.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); tourNext(); } });
+    setTimeout(() => name.focus(), 50);
+  } else {
+    setTimeout(() => (tourStep === TOUR_STEPS - 1 ? $("[data-tour-end]") : next).focus(), 50);
+  }
+  for (const [id, key] of [["tour-wd", "weekday"], ["tour-we", "weekend"]]) {
+    const el = $(`#${id}`);
+    if (el) el.addEventListener("input", () => { tourData[key] = +el.value; $(`#${id}-out`).textContent = fmtH(+el.value); });
+  }
+}
+function tourNext() { if (tourStep < TOUR_STEPS - 1) { tourStep++; renderTour(); } }
+$("#tour-next").addEventListener("click", tourNext);
+$("#tour-back").addEventListener("click", () => {
+  if (tourStep === 0) closeTour("empty");
+  else { tourStep--; renderTour(); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#tour").classList.contains("hidden")) closeTour("empty");
+});
+
+/* ---------------- Navigation & helpers ---------------- */
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove("show"), 3000);
+}
 // Two-step confirm inside the page instead of a browser pop-up:
 // the first click arms the button, a second click within a few seconds confirms.
 function armed(btn, label) {
@@ -725,15 +885,6 @@ function armed(btn, label) {
   btn.textContent = label;
   btn._armT = setTimeout(() => { delete btn.dataset.armed; btn.innerHTML = btn._orig; }, 3500);
   return false;
-}
-
-/* ---------------- Navigation & toast ---------------- */
-function toast(msg) {
-  const t = $("#toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove("show"), 3000);
 }
 const VIEWS = ["today", "plan", "tasks", "settings"];
 function goto(view, push = true) {
@@ -746,26 +897,15 @@ function goto(view, push = true) {
 window.addEventListener("hashchange", () => goto(location.hash.slice(1), false));
 
 /* ---------------- Events ---------------- */
-function focusOn(taskId) {
-  if (state.timer && (state.timer.endsAt || state.timer.left < state.timer.duration) && state.timer.phase === "focus") {
-    toast("A focus session is already going. Finish it first.");
-  } else {
-    state.timer = null;
-    $("#timer-task").value = taskId;
-    timerStart();
-    toast(`Focusing on ${taskById(taskId)?.title || "your work"}. You've got this.`);
-  }
-  goto("today");
-  $("#timer-card").scrollIntoView({ behavior: "smooth", block: "center" });
-}
-
 document.addEventListener("click", (e) => {
   const el = (sel) => e.target.closest(sel);
   if (el(".nav-btn")) return goto(el(".nav-btn").dataset.view);
   if (el("[data-goto]")) { e.preventDefault(); return goto(el("[data-goto]").dataset.goto); }
-  if (el("[data-timer-pill]")) { goto("today"); return $("#timer-card").scrollIntoView({ behavior: "smooth", block: "center" }); }
+  if (el("[data-timer-pill]")) { goto("today"); return $("#today-card").scrollIntoView({ behavior: "smooth", block: "start" }); }
   if (el("[data-theme-toggle]")) return setTheme(isDark() ? "light" : "dark");
   if (el("[data-theme-set]")) return setTheme(el("[data-theme-set]").dataset.themeSet);
+  if (el("[data-tour-end]")) return closeTour(el("[data-tour-end]").dataset.tourEnd);
+  if (el("[data-new-task]")) return openTaskForm();
 
   const mood = el(".mood");
   if (mood) {
@@ -774,18 +914,25 @@ document.addEventListener("click", (e) => {
     state.moods.push({ date, value: v });
     state.moods.sort((a, b) => a.date.localeCompare(b.date));
     save();
-    return toast(MOOD_CAPACITY[v] ? "Thanks for being honest. Today's plan has been lightened." : "Check-in saved.");
+    return toast(MOOD_CAPACITY[v] ? "Thanks for being honest. Today's plan is lighter now." : "Check-in saved.");
   }
 
-  if (el("#quick-log")) { openLog(); return; }
-  if (el("[data-focus]")) return focusOn(el("[data-focus]").dataset.focus);
-  if (el("[data-del-session]")) {
-    state.sessions = state.sessions.filter((s) => s.id !== el("[data-del-session]").dataset.delSession);
-    save(); return toast("Removed from your log.");
+  if (el("[data-check]")) {
+    const b = el("[data-check]");
+    logSession(b.dataset.check, +b.dataset.hours * 60, "manual");
+    save();
+    return toast("Nice! Checked off for today.");
   }
+  if (el("[data-undo]")) {
+    const id = el("[data-undo]").dataset.undo || null;
+    state.sessions = state.sessions.filter((s) => !(s.date === todayKey() && (s.taskId || null) === id));
+    save();
+    return toast("Undone.");
+  }
+  if (el("[data-focus]")) return openFocus(el("[data-focus]").dataset.focus);
   if (el("[data-del]")) {
     const id = el("[data-del]").dataset.del;
-    if (armed(el("[data-del]"), "Delete?")) { state.tasks = state.tasks.filter((x) => x.id !== id); save(); toast("Task deleted. Plan rebalanced."); }
+    if (armed(el("[data-del]"), "Delete?")) { state.tasks = state.tasks.filter((x) => x.id !== id); save(); toast("Task deleted. Plan updated."); }
     return;
   }
   if (el("[data-edit]")) return startEdit(taskById(el("[data-edit]").dataset.edit));
@@ -796,30 +943,37 @@ document.addEventListener("click", (e) => {
     $("#log-min").value = chip.dataset.m;
     return;
   }
-  const preset = el("#timer-presets button");
-  if (preset && !preset.disabled) {
-    if (preset.dataset.break) {
-      const s = +state.prefs.breakMin * 60;
-      state.timer = { phase: "break", taskId: null, duration: s, left: s, endsAt: null };
-    } else {
-      state.prefs.focusMin = +preset.dataset.min;
-      state.timer = null;
-    }
+  const len = el("#focus-len button");
+  if (len && state.timer && !state.timer.started) {
+    state.prefs.focusMin = +len.dataset.min;
+    state.timer.duration = state.timer.left = state.prefs.focusMin * 60;
     persist(); renderTimer();
+    return;
   }
+  const sf = el("#s-focus button");
+  if (sf) { state.prefs.focusMin = +sf.dataset.min; save(); }
 });
 
-$("#timer-main").addEventListener("click", () => (state.timer?.endsAt ? timerPause() : timerStart()));
-$("#timer-stop").addEventListener("click", () => {
-  if (state.timer?.phase === "break") { state.timer = null; save(); return; }
-  timerFinish(false);
+$("#timer-main").addEventListener("click", () => (state.timer.endsAt ? timerPause() : timerStart()));
+$("#timer-second").addEventListener("click", () => {
+  const t = state.timer;
+  if (t.phase === "focus" && t.started) return timerFinish(false);
+  state.timer = null; // cancel, back to my plan, or skip break
+  save();
 });
+$("#timer-third").addEventListener("click", (e) => {
+  if (!armed(e.currentTarget, "Click again to discard")) return;
+  state.timer = null;
+  save();
+  toast("Session discarded.");
+});
+$("#focus-general").addEventListener("click", () => openFocus(null));
 
-function openLog() {
-  $("#log-form").classList.remove("hidden");
-  $("#log-task").focus();
-}
-$("#log-open").addEventListener("click", () => ($("#log-form").classList.contains("hidden") ? openLog() : $("#log-form").classList.add("hidden")));
+$("#log-open").addEventListener("click", () => {
+  const f = $("#log-form");
+  f.classList.toggle("hidden");
+  if (!f.classList.contains("hidden")) $("#log-task").focus();
+});
 $("#log-cancel").addEventListener("click", () => $("#log-form").classList.add("hidden"));
 $("#log-min").addEventListener("input", () => document.querySelectorAll("#log-chips .chip").forEach((c) => c.classList.toggle("on", c.dataset.m === $("#log-min").value)));
 $("#log-form").addEventListener("submit", (e) => {
@@ -828,7 +982,7 @@ $("#log-form").addEventListener("submit", (e) => {
   logSession($("#log-task").value || null, minutes, "manual");
   $("#log-form").classList.add("hidden");
   save();
-  toast(`Logged ${fmtH(minutes / 60)}. Nice work! Your plan has been updated.`);
+  toast(`Logged ${fmtH(minutes / 60)}. Your plan has been updated.`);
 });
 
 document.addEventListener("change", (e) => {
@@ -837,7 +991,7 @@ document.addEventListener("change", (e) => {
     const t = taskById(id);
     t.done = e.target.checked;
     save();
-    toast(t.done ? "Done! Plan rebalanced." : "Task reopened.");
+    toast(t.done ? "Done! Plan updated." : "Task reopened.");
   }
   if (e.target.id === "show-done") render();
   if (e.target.dataset.cap !== undefined) {
@@ -915,13 +1069,25 @@ $("#task-form").addEventListener("submit", (e) => {
   const id = $("#t-id").value;
   if (id) Object.assign(taskById(id), f);
   else state.tasks.push({ id: uid(), done: false, ...f });
-  resetForm();
+  closeTaskForm();
   save();
-  toast(id ? "Task updated. Plan rebalanced." : "Task added. Plan rebalanced.");
+  toast(id ? "Task updated. Plan updated." : "Task added. Overload has planned it into your days.");
 });
 
-function startEdit(t) {
+function openTaskForm() {
+  resetForm();
   goto("tasks");
+  $("#task-form").classList.remove("hidden");
+  $("#new-task").classList.add("hidden");
+  $("#t-title").focus();
+}
+function closeTaskForm() {
+  resetForm();
+  $("#task-form").classList.add("hidden");
+  $("#new-task").classList.remove("hidden");
+}
+function startEdit(t) {
+  openTaskForm();
   $("#t-id").value = t.id;
   $("#t-title").value = t.title;
   $("#t-subject").value = t.subject || "";
@@ -934,9 +1100,7 @@ function startEdit(t) {
   $("#t-hours").dataset.touched = "1";
   $("#form-title").textContent = "Edit task";
   $("#save-task").lastElementChild.textContent = "Save changes";
-  $("#cancel-edit").classList.remove("hidden");
   showEstimate("");
-  $("#t-title").focus();
 }
 function resetForm() {
   $("#task-form").reset();
@@ -946,19 +1110,13 @@ function resetForm() {
   $("#t-due").value = addDays(todayKey(), 3);
   $("#form-title").textContent = "New task";
   $("#save-task").lastElementChild.textContent = "Add task";
-  $("#cancel-edit").classList.add("hidden");
   autoEstimate();
   showEstimate("");
 }
-$("#cancel-edit").addEventListener("click", resetForm);
+$("#new-task").addEventListener("click", openTaskForm);
+$("#cancel-edit").addEventListener("click", closeTaskForm);
 
 /* ---- Data ---- */
-$("#load-demo").addEventListener("click", (e) => {
-  if ((state.tasks.length || state.sessions.length) && !armed(e.currentTarget, "Replace my data?")) return;
-  loadDemo();
-  goto("today");
-  toast("Demo data loaded.");
-});
 function loadDemo() {
   const t = todayKey();
   const mk = (title, subject, type, dueIn, difficulty, hours, desc = "") => ({ id: uid(), done: false, title, subject, type, due: addDays(t, dueIn), difficulty, hours, desc });
@@ -979,6 +1137,13 @@ function loadDemo() {
   if (!state.name) state.name = "Alex";
   save();
 }
+$("#load-demo").addEventListener("click", (e) => {
+  if ((state.tasks.length || state.sessions.length) && !armed(e.currentTarget, "Replace my data?")) return;
+  loadDemo();
+  goto("today");
+  toast("Example data loaded.");
+});
+$("#replay-tour").addEventListener("click", openTour);
 $("#export").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
@@ -992,21 +1157,18 @@ $("#reset").addEventListener("click", (e) => {
   state = defaultState();
   save();
   toast("Everything erased.");
+  openTour();
 });
 
 /* ---------------- Boot ---------------- */
 resetForm();
 render();
-// The shared preview page opens with example data so there's something to explore.
-if (window.OVERLOAD_PREVIEW && !state.tasks.length && !state.sessions.length && !state.moods.length) {
-  loadDemo();
-  setTimeout(() => toast("You're looking at example data. Erase it in Settings to start fresh."), 600);
-}
 goto(location.hash.slice(1) || "today", false);
 if (state.timer?.endsAt) {
-  if (timerLeft() <= 0) timerFinish(true); // finished while the tab was closed
+  if (timerLeft() <= 0) state.timer.phase === "focus" ? timerFinish(true) : breakDone(); // finished while the tab was closed
   else startTicking();
 }
+if (!state.onboarded) openTour();
 // Keep "today" correct if the tab stays open past midnight.
 let lastDay = todayKey();
 setInterval(() => { if (todayKey() !== lastDay) { lastDay = todayKey(); render(); } }, 60000);
