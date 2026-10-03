@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Overload – Academic Workload Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="logo">⚡ <span>Overload</span></div>
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-view="dashboard">Dashboard</button>
+        <button class="tab" data-view="plan">My Plan</button>
+        <button class="tab" data-view="tasks">Tasks</button>
+        <button class="tab" data-view="settings">Settings</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ============ DASHBOARD ============ -->
+    <section id="view-dashboard" class="view active">
+      <div class="hero">
+        <h1 id="welcome">Welcome to Overload 👋</h1>
+        <p class="muted">Ready to conquer your week?</p>
+      </div>
+
+      <div class="card score-card">
+        <div class="score-left">
+          <h3>Your Burnout Risk Index</h3>
+          <div class="score-value" id="score-value">0%</div>
+          <div class="score-label" id="score-label">✅ Low Risk</div>
+        </div>
+        <div class="score-right">
+          <div class="meter"><div class="meter-fill" id="meter-fill"></div></div>
+          <div class="factors" id="factors"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>How are you feeling today?</h2>
+        <div class="moods" id="moods">
+          <button class="mood" data-mood="1" title="Unstoppable">🚀<span>Unstoppable</span></button>
+          <button class="mood" data-mood="2" title="Good">😊<span>Good</span></button>
+          <button class="mood" data-mood="3" title="Okay">😐<span>Okay</span></button>
+          <button class="mood" data-mood="4" title="Tired">😴<span>Tired</span></button>
+          <button class="mood" data-mood="5" title="Overwhelmed">😰<span>Overwhelmed</span></button>
+        </div>
+        <div class="trend-wrap">
+          <div class="trend-head">
+            <span class="muted small">Stress trend (last 14 check-ins)</span>
+            <span class="small" id="trend-text"></span>
+          </div>
+          <svg id="trend" viewBox="0 0 300 60" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h2>Workload Forecast <span class="muted small">next 14 days</span></h2>
+          <div class="chart" id="load-chart"></div>
+          <div class="legend small">
+            <span><i class="sw sw-plan"></i>Overload plan</span>
+            <span><i class="sw sw-naive"></i>Last-minute cramming</span>
+            <span><i class="sw sw-cap"></i>Your daily limit</span>
+          </div>
+          <p class="compare" id="compare"></p>
+        </div>
+        <div class="card">
+          <h2>Upcoming</h2>
+          <div id="upcoming" class="upcoming"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Insights</h2>
+        <ul class="insights" id="insights"></ul>
+      </div>
+    </section>
+
+    <!-- ============ PLAN ============ -->
+    <section id="view-plan" class="view">
+      <div class="hero">
+        <h1>My Study Plan</h1>
+        <p class="muted">Overload automatically spreads your work so no single day gets overloaded. It rebalances every time something changes.</p>
+      </div>
+      <div class="week" id="week"></div>
+    </section>
+
+    <!-- ============ TASKS ============ -->
+    <section id="view-tasks" class="view">
+      <div class="hero">
+        <h1>Tasks</h1>
+        <p class="muted">Add assignments, tests and projects. Paste the description and Overload estimates how much work it will be.</p>
+      </div>
+
+      <form class="card form" id="task-form">
+        <input type="hidden" id="t-id" />
+        <div class="row">
+          <label>Title<input id="t-title" required placeholder="e.g. Chemistry Unit 3 Test" /></label>
+          <label>Subject<input id="t-subject" placeholder="e.g. Chemistry" list="subjects" /></label>
+        </div>
+        <div class="row">
+          <label>Type
+            <select id="t-type">
+              <option value="homework">Homework</option>
+              <option value="quiz">Quiz</option>
+              <option value="test">Test / Exam</option>
+              <option value="essay">Essay / Paper</option>
+              <option value="project">Project</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>Due date<input type="date" id="t-due" required /></label>
+          <label>Difficulty <span class="muted small" id="t-diff-out">3</span>
+            <input type="range" id="t-diff" min="1" max="5" value="3" />
+          </label>
+        </div>
+        <label>Description <span class="muted small">(optional — paste from Google Classroom, Canvas, etc.)</span>
+          <textarea id="t-desc" rows="3" placeholder="e.g. Read chapters 4-5 and write a 5 page analysis with at least 3 sources."></textarea>
+        </label>
+        <div class="row row-end">
+          <label>Estimated hours<input type="number" id="t-hours" min="0.5" max="100" step="0.5" required /></label>
+          <button type="button" class="btn ghost" id="estimate-btn">✨ Estimate for me</button>
+          <div class="spacer"></div>
+          <button type="button" class="btn ghost hidden" id="cancel-edit">Cancel</button>
+          <button type="submit" class="btn" id="save-task">Add task</button>
+        </div>
+        <p class="small muted" id="estimate-note"></p>
+      </form>
+
+      <div class="card">
+        <div class="list-head">
+          <h2>All Tasks</h2>
+          <label class="small"><input type="checkbox" id="show-done" /> show completed</label>
+        </div>
+        <div id="task-list" class="task-list"></div>
+      </div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section id="view-settings" class="view">
+      <div class="hero">
+        <h1>Settings</h1>
+        <p class="muted">Tell Overload how much you can realistically study. It will never schedule more than this.</p>
+      </div>
+      <div class="card form">
+        <label>Your first name<input id="s-name" placeholder="Optional" /></label>
+        <h3>Max study hours per day</h3>
+        <div class="capacity" id="capacity"></div>
+      </div>
+      <div class="card form">
+        <h3>AI estimation (optional)</h3>
+        <p class="small muted">Overload has a built-in estimator that works offline. If you add a Google Gemini API key, it uses Gemini to read assignment descriptions instead. The key is stored only in this browser.</p>
+        <div class="row">
+          <label>Gemini API key<input id="s-key" type="password" placeholder="AIza..." autocomplete="off" /></label>
+          <label>Model<input id="s-model" placeholder="gemini-2.5-flash" /></label>
+        </div>
+      </div>
+      <div class="card form">
+        <h3>Data</h3>
+        <p class="small muted">All your data stays on this device.</p>
+        <div class="row">
+          <button class="btn ghost" id="load-demo">Load demo data</button>
+          <button class="btn ghost" id="export">Export backup</button>
+          <button class="btn danger" id="reset">Erase everything</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <datalist id="subjects"></datalist>
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
