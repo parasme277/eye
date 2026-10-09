@@ -22,13 +22,14 @@ The first time you open it, a short welcome tour sets you up. Pick **Explore wit
 | **Focus mode** | A 25, 45 or 60 minute timer inside the task card. It keeps counting in other tabs, plays a soft chime when time's up, logs the time to that assignment and suggests a 5-minute break. |
 | **Burnout risk** | Tap the ring. You see the score split into its five factors, a plain-language reason for each, where you sit on the Low / Moderate / High scale, and two things you can do about it. |
 | **Add assignment** | Title, subject, due date, difficulty and type, plus the pasted description. Overload reads it for pages, chapters, problems and sources, shows its estimate line by line, and previews how the work spreads over the coming days. |
-| **Plan** | A 14-day chart of your plan against last-minute cramming, then each day as a card with its study blocks sized by time. Back-to-back free days merge into one "Rest days" card. |
+| **Plan** | A 14-day chart of your plan against last-minute cramming, then each day as a card with its study sessions sized by time. Back-to-back free days merge into one "Rest days" card. Tap + on any day to plan your own session. |
 | **Check-ins** | Your two weeks as mood tiles, each tinted by how the day felt, with hours studied and a feather on days Overload lightened. Summary cards show your daily average, mood mix and lighter days. |
 | **Settings** | Name, study-time sliders (or type a value), light and dark mode, optional Google Gemini, export, delete everything, and replay the welcome tour. |
 
 ## How it works
 
-- **Planning:** every assignment is split into 15-minute pieces and spread across the days before it's due. Each piece goes to the least-loaded day, measured against your own daily limit. The plan rebuilds whenever you add an assignment, tick something off, log time or check in.
+- **Planning:** each assignment gets real study sessions (about 1 hour for tests, essays and projects, 45 minutes for quizzes), not 15-minute drips. Overload starts only as early as the work needs, so a 10-hour test three weeks away becomes about ten 1-hour sessions in the days before it. Each session goes to the least-loaded day under your daily limit, and the plan rebuilds whenever you add an assignment, tick something off, log time or check in.
+- **Your own sessions:** use **Plan a session** (on Today, or the + on any day in Plan) to put a session on a specific day, like "light refresh on derivatives, 45m, today". Overload keeps it there, counts it toward that assignment, and plans everything else around it.
 - **Lighter days:** checking in as *Tired* or *Stressed* lowers today's limit by 25% or 50% and moves the extra work to later days. An **Undo** button puts it back.
 - **Burnout Risk (0–100):** five factors worth up to 20 points each.
 
