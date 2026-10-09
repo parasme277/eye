@@ -4,348 +4,108 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Overload</title>
-  <meta name="description" content="Overload predicts academic burnout and rebalances your study plan before it happens." />
+  <meta name="description" content="Overload plans your schoolwork so no day gets overwhelming, and warns you before burnout hits." />
   <script>
     // Apply the saved theme before first paint so there's no flash.
     try { var t = localStorage.getItem("overload-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Icon sprite -->
+  <!-- Lucide icons (lucide.dev, ISC license), drawn at stroke-width 2.75 -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></symbol>
-    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9v11h14V9"/><path d="M10 20v-6h4v6"/></symbol>
-    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
-    <symbol id="i-list" viewBox="0 0 24 24"><path d="M10 6h11M10 12h11M10 18h11"/><path d="m3 6 1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/></symbol>
-    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
-    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
-    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></symbol>
-    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z" fill="currentColor"/></symbol>
-    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4.5" width="4" height="15" rx="1" fill="currentColor"/><rect x="14" y="4.5" width="4" height="15" rx="1" fill="currentColor"/></symbol>
-    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
-    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
-    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 22c4.2 0 7-2.8 7-7 0-3.6-2.4-6.1-4-8-.4 1.9-1.4 3-2.8 3C12.2 7 11 4.3 8.5 2.5 8.5 7 5 9.3 5 14.5 5 18.9 7.8 22 12 22z"/></symbol>
-    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
-    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
-    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 4 13c0-6 5-9 16-9 0 10-3 16-9 16z"/><path d="M4 20c4-6 8-8 11-9"/></symbol>
-    <symbol id="i-trend-down" viewBox="0 0 24 24"><path d="m3 7 6 6 4-4 8 8"/><path d="M15 17h6v-6"/></symbol>
-    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
-    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-9-9.3C2 7.4 4.2 4.5 7.3 4.5c2 0 3.6 1.1 4.7 2.8 1.1-1.7 2.7-2.8 4.7-2.8 3.1 0 5.3 2.9 4.3 6.2-1.5 4.7-9 9.3-9 9.3z"/></symbol>
-    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3.5 13.9 9l5.6 2-5.6 2L12 18.5 10.1 13l-5.6-2 5.6-2z"/><path d="M19 3v4M17 5h4"/></symbol>
-    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-4-4L4 16z"/></symbol>
-    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
-    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
-    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
-    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+    <symbol id="i-calendar-days" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></symbol>
+    <symbol id="i-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></symbol>
+    <symbol id="i-settings-2" viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+    <symbol id="i-feather" viewBox="0 0 24 24"><path d="M12.67 19a2 2 0 0 0 1.416-.588l6.154-6.172a6 6 0 0 0-8.49-8.49L5.586 9.914A2 2 0 0 0 5 11.328V18a1 1 0 0 0 1 1z"/><path d="M16 8 2 22"/><path d="M17.5 15H9"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+    <symbol id="i-pen-line" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol>
+    <symbol id="i-mountain" viewBox="0 0 24 24"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+    <symbol id="i-scale" viewBox="0 0 24 24"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></symbol>
+    <symbol id="i-heart-pulse" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/></symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24"><path d="M10 2v2"/><path d="M14 2v2"/><path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/><path d="M6 2v2"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+    <symbol id="i-sprout" viewBox="0 0 24 24"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></symbol>
+    <symbol id="i-moon-star" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9"/><path d="M20 3v4"/><path d="M22 5h-4"/></symbol>
+    <symbol id="i-refresh-cw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-key-round" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+    <symbol id="i-trash-2" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></symbol>
+    <symbol id="i-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-calendar-range" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M17 14h-6"/><path d="M13 18H7"/><path d="M7 14h.01"/><path d="M17 18h.01"/></symbol>
+    <symbol id="i-calendar-arrow-down" viewBox="0 0 24 24"><path d="m14 18 4 4 4-4"/><path d="M16 2v4"/><path d="M18 14v8"/><path d="M21 11.354V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7.343"/><path d="M3 10h18"/><path d="M8 2v4"/></symbol>
+    <symbol id="i-undo-2" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></symbol>
+    <symbol id="i-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-file-text" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></symbol>
+    <symbol id="i-book-open" viewBox="0 0 24 24"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></symbol>
+    <symbol id="i-timer" viewBox="0 0 24 24"><line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-rotate-ccw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></symbol>
+    <symbol id="i-list-checks" viewBox="0 0 24 24"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></symbol>
+    <symbol id="i-calendar-clock" viewBox="0 0 24 24"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 16.3V14"/><circle cx="16" cy="16" r="6"/></symbol>
   </svg>
 
   <div class="app">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#i-bolt"/></svg></span>Overload</div>
+      <div class="logo"><span class="logo-mark"><i></i><i></i><i></i><b></b></span>Overload</div>
+      <button class="btn btn-primary btn-block add-btn" data-action="add"><svg class="icon s16"><use href="#i-plus"/></svg>Add assignment</button>
       <nav class="nav" aria-label="Main">
-        <button class="nav-btn active" data-view="today"><svg class="icon"><use href="#i-home"/></svg>Today</button>
-        <button class="nav-btn" data-view="plan"><svg class="icon"><use href="#i-calendar"/></svg>Plan</button>
-        <button class="nav-btn" data-view="tasks"><svg class="icon"><use href="#i-list"/></svg>Tasks</button>
-        <button class="nav-btn" data-view="settings"><svg class="icon"><use href="#i-sliders"/></svg>Settings</button>
+        <button class="nav-btn" data-view="today"><svg class="icon"><use href="#i-sun"/></svg>Today</button>
+        <button class="nav-btn" data-view="plan"><svg class="icon"><use href="#i-calendar-days"/></svg>Plan</button>
+        <button class="nav-btn" data-view="checkins"><svg class="icon"><use href="#i-smile"/></svg>Check-ins</button>
+        <button class="nav-btn" data-view="settings"><svg class="icon"><use href="#i-settings-2"/></svg>Settings</button>
       </nav>
       <div class="side-foot">
-        <button class="timer-pill hidden" data-timer-pill></button>
-        <button class="theme-btn" data-theme-toggle></button>
+        <button class="timer-pill hidden" data-action="goto-focus"></button>
+        <div class="pillseg" data-theme-seg>
+          <button data-theme="light"><svg class="icon s14"><use href="#i-sun"/></svg>Light</button>
+          <button data-theme="dark"><svg class="icon s14"><use href="#i-moon"/></svg>Dark</button>
+        </div>
+        <div class="privacy"><svg class="icon"><use href="#i-lock"/></svg><span><b>Private by design.</b> No account. Everything stays on this device.</span></div>
       </div>
     </aside>
 
     <div class="shell">
       <header class="topbar">
-        <div class="brand"><span class="brand-mark"><svg class="icon"><use href="#i-bolt"/></svg></span>Overload</div>
-        <div class="topbar-right">
-          <button class="timer-pill hidden" data-timer-pill></button>
-          <button class="theme-btn" data-theme-toggle aria-label="Toggle dark mode"></button>
+        <div class="logo"><span class="logo-mark"><i></i><i></i><i></i><b></b></span>Overload</div>
+        <div class="right">
+          <button class="timer-pill hidden" data-action="goto-focus"></button>
+          <button class="icon-circle" data-action="toggle-theme" aria-label="Switch light or dark mode"><svg class="icon s16" id="theme-icon"><use href="#i-moon"/></svg></button>
+          <button class="icon-circle solid" data-action="add" aria-label="Add assignment"><svg class="icon s16"><use href="#i-plus"/></svg></button>
         </div>
       </header>
-
       <main>
-        <!-- ================= TODAY ================= -->
-        <section id="view-today" class="view active">
-          <div class="page-head">
-            <div>
-              <h1 id="greeting">Hi there</h1>
-              <p class="muted" id="today-date"></p>
-            </div>
-            <span class="pill accent" id="streak-pill"></span>
-          </div>
-
-          <div class="grid">
-            <div class="stack span-7">
-            <!-- Today's checklist + focus mode -->
-            <div class="card" id="today-card">
-              <div id="list-mode">
-                <div class="card-head">
-                  <div><h2>Today's plan</h2><p class="small muted" id="today-sub"></p></div>
-                  <span class="pill" id="today-pill"></span>
-                </div>
-                <div class="bar today-meter" id="today-bar"><i></i></div>
-                <div class="todo" id="todo"></div>
-                <div class="todo-foot">
-                  <button class="link-btn" id="log-open">Worked on something else? Log time</button>
-                  <button class="link-btn" id="focus-general">Start a focus timer</button>
-                </div>
-                <form class="log-form hidden" id="log-form">
-                  <label class="field">What did you work on?
-                    <select id="log-task"></select>
-                  </label>
-                  <div class="log-row">
-                    <div class="chips" id="log-chips">
-                      <button type="button" class="chip" data-m="15">15m</button>
-                      <button type="button" class="chip" data-m="30">30m</button>
-                      <button type="button" class="chip on" data-m="60">1h</button>
-                      <button type="button" class="chip" data-m="90">1.5h</button>
-                      <button type="button" class="chip" data-m="120">2h</button>
-                    </div>
-                    <input type="number" id="log-min" min="1" max="600" value="60" aria-label="Minutes" /><span class="small muted">min</span>
-                  </div>
-                  <div class="row">
-                    <button class="btn primary sm" type="submit">Save</button>
-                    <button class="btn ghost sm" type="button" id="log-cancel">Cancel</button>
-                  </div>
-                </form>
-              </div>
-
-              <div class="focus hidden" id="focus-mode">
-                <div class="focus-task"><span class="eyebrow" id="focus-label">Focus on</span><b id="focus-title"></b></div>
-                <div class="seg" id="focus-len">
-                  <button data-min="25">25 min</button>
-                  <button data-min="45">45 min</button>
-                  <button data-min="60">60 min</button>
-                </div>
-                <div class="saved-note hidden" id="saved-note"></div>
-                <div class="timer-ring" id="timer-ring">
-                  <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="54" fill="none" stroke-width="6"/>
-                    <circle class="prog" id="timer-arc" cx="60" cy="60" r="54" fill="none" stroke-width="6" stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="0"/></svg>
-                  <div class="timer-center"><div class="timer-time" id="timer-time">25:00</div><div class="timer-phase" id="timer-phase"></div></div>
-                </div>
-                <div class="focus-btns">
-                  <button class="btn primary lg" id="timer-main"></button>
-                  <button class="btn lg" id="timer-second"></button>
-                </div>
-                <button class="link-btn" id="timer-third"></button>
-              </div>
-            </div>
-
-            <!-- Coming up -->
-            <div class="card" id="coming-card">
-              <div class="card-head"><h2>Coming up</h2><button class="btn ghost sm" data-goto="plan">See full plan</button></div>
-              <div class="dl-list" id="coming-up"></div>
-            </div>
-            </div>
-
-            <div class="stack span-5">
-              <!-- Check-in -->
-              <div class="card">
-                <div class="card-head"><h2>How are you feeling?</h2><span class="small faint" id="checkin-status"></span></div>
-                <div class="moods" id="moods">
-                  <button class="mood" data-mood="1"><span class="e">🚀</span><span class="l">Great</span></button>
-                  <button class="mood" data-mood="2"><span class="e">😊</span><span class="l">Good</span></button>
-                  <button class="mood" data-mood="3"><span class="e">😐</span><span class="l">Okay</span></button>
-                  <button class="mood" data-mood="4"><span class="e">😴</span><span class="l">Tired</span></button>
-                  <button class="mood" data-mood="5"><span class="e">😰</span><span class="l">Stressed</span></button>
-                </div>
-                <div class="hist-head"><h3>Last 14 days</h3><span class="small faint" id="hist-summary"></span></div>
-                <div class="history" id="history"></div>
-                <p class="hist-note" id="hist-note"></p>
-              </div>
-
-              <!-- Burnout risk -->
-              <div class="card">
-                <div class="card-head"><h2>Burnout risk</h2><span class="pill" id="risk-pill"></span></div>
-                <div class="risk-top">
-                  <div class="ring">
-                    <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52" fill="none" stroke-width="12"/>
-                      <circle class="prog" id="risk-arc" cx="60" cy="60" r="52" fill="none" stroke-width="12" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
-                    <div class="ring-center"><b id="risk-score">0</b><span>of 100</span></div>
-                  </div>
-                  <div class="risk-text">
-                    <span class="eyebrow">Next 7 days</span>
-                    <h3 id="risk-title"></h3>
-                    <p class="small muted" id="risk-summary"></p>
-                  </div>
-                </div>
-                <ul class="tips" id="tips"></ul>
-                <details class="how">
-                  <summary>How is this calculated?</summary>
-                  <div class="factors" id="factors"></div>
-                </details>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ================= PLAN ================= -->
-        <section id="view-plan" class="view">
-          <div class="page-head">
-            <div>
-              <h1>Study plan</h1>
-              <p class="muted">Overload spreads your work across the days before each deadline and never goes over your daily limit. It updates whenever something changes.</p>
-            </div>
-          </div>
-          <div class="grid">
-            <div class="span-8" id="agenda"></div>
-            <div class="stack span-4">
-              <div class="card">
-                <div class="card-head"><h2>Deadlines</h2><button class="btn ghost sm" data-goto="tasks">Manage</button></div>
-                <div class="dl-list" id="deadlines"></div>
-              </div>
-              <div class="card">
-                <div class="card-head"><div><h2>Workload</h2><p class="small muted">Next 14 days</p></div></div>
-                <div class="chart" id="chart"></div>
-                <div class="legend">
-                  <span><i class="l-plan"></i>Your plan</span>
-                  <span><i class="l-naive"></i>Cramming</span>
-                  <span><i class="l-cap"></i>Daily limit</span>
-                  <span><i class="l-due"></i>Deadline</span>
-                </div>
-                <div class="callout hidden" id="callout"><svg class="icon"><use href="#i-trend-down"/></svg><span></span></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ================= TASKS ================= -->
-        <section id="view-tasks" class="view">
-          <div class="page-head">
-            <div>
-              <h1>Tasks</h1>
-              <p class="muted">Your tests, assignments and projects. Overload plans study time for each one.</p>
-            </div>
-            <button class="btn primary" id="new-task"><svg class="icon"><use href="#i-plus"/></svg>New task</button>
-          </div>
-          <div class="grid">
-            <form class="card span-12 hidden" id="task-form">
-              <div class="card-head"><h2 id="form-title">New task</h2></div>
-              <input type="hidden" id="t-id" />
-              <div class="form-grid">
-                <label class="field c3 full-m">Title<input id="t-title" required placeholder="e.g. Chemistry Unit 3 Test" /></label>
-                <label class="field c3 full-m">Subject<input id="t-subject" placeholder="e.g. Chemistry" list="subjects" /></label>
-                <label class="field c2">Type
-                  <select id="t-type">
-                    <option value="homework">Homework</option>
-                    <option value="quiz">Quiz</option>
-                    <option value="test">Test / exam</option>
-                    <option value="essay">Essay / paper</option>
-                    <option value="project">Project</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-                <label class="field c2">Due date<input type="date" id="t-due" required /></label>
-                <label class="field c2 full-m">Difficulty: <span id="t-diff-out">3 / 5</span>
-                  <input type="range" id="t-diff" min="1" max="5" value="3" />
-                </label>
-                <label class="field c6">Description <span class="faint">(optional, paste it from Google Classroom, Canvas, etc.)</span>
-                  <textarea id="t-desc" rows="3" placeholder="e.g. Read chapters 4-5 and write a 5 page analysis with at least 3 sources."></textarea>
-                </label>
-                <div class="c6 form-actions">
-                  <label class="field" style="width:150px">Estimated hours<input type="number" id="t-hours" min="0.5" max="100" step="0.5" required /></label>
-                  <button type="button" class="btn soft" id="estimate-btn"><svg class="icon"><use href="#i-sparkle"/></svg><span>Estimate with AI</span></button>
-                  <span style="flex:1"></span>
-                  <button type="button" class="btn ghost" id="cancel-edit">Cancel</button>
-                  <button type="submit" class="btn primary" id="save-task"><svg class="icon"><use href="#i-check"/></svg><span>Add task</span></button>
-                </div>
-                <div class="c6 est-box hidden" id="estimate-note"></div>
-              </div>
-            </form>
-
-            <div class="card span-12">
-              <div class="list-head">
-                <h2>All tasks</h2>
-                <label class="check-label"><input type="checkbox" id="show-done" /> Show completed</label>
-              </div>
-              <div class="task-list" id="task-list"></div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ================= SETTINGS ================= -->
-        <section id="view-settings" class="view">
-          <div class="page-head"><div><h1>Settings</h1></div></div>
-          <div class="settings">
-            <div class="card">
-              <h2>Profile</h2>
-              <p class="small muted">Used to greet you. Stays on this device.</p>
-              <label class="field">First name<input id="s-name" placeholder="Optional" autocomplete="given-name" /></label>
-            </div>
-
-            <div class="card">
-              <h2>Appearance</h2>
-              <p class="small muted">Pick a theme, or follow your device setting.</p>
-              <div class="seg" id="theme-seg">
-                <button data-theme-set="system">System</button>
-                <button data-theme-set="light">Light</button>
-                <button data-theme-set="dark">Dark</button>
-              </div>
-            </div>
-
-            <div class="card">
-              <h2>Daily study limits</h2>
-              <p class="small muted">The most hours you can realistically study each day. Overload never plans more than this.</p>
-              <div class="cap-grid" id="capacity"></div>
-            </div>
-
-            <div class="card">
-              <h2>Focus timer</h2>
-              <p class="small muted">Default session length and breaks.</p>
-              <div class="settings-stack">
-                <div class="seg" id="s-focus">
-                  <button data-min="25">25 min</button>
-                  <button data-min="45">45 min</button>
-                  <button data-min="60">60 min</button>
-                </div>
-                <div class="row">
-                  <label class="field" style="width:130px">Break length (min)<input type="number" id="s-break" min="1" max="30" /></label>
-                  <label class="check-label"><input type="checkbox" id="s-sound" /> Play a sound when time is up</label>
-                </div>
-              </div>
-            </div>
-
-            <div class="card">
-              <h2>AI estimates</h2>
-              <p class="small muted">Overload can use Google Gemini to read assignment descriptions and estimate how long they'll take.</p>
-              <div class="status-line"><span class="status-dot" id="ai-dot"></span><span id="ai-status"></span></div>
-            </div>
-
-            <div class="card">
-              <h2>Your data</h2>
-              <p class="small muted">Everything is stored only in this browser. No account needed.</p>
-              <div class="row">
-                <button class="btn soft" id="replay-tour">Replay intro</button>
-                <button class="btn" id="load-demo">Load example data</button>
-                <button class="btn" id="export">Export backup</button>
-                <button class="btn danger" id="reset">Erase everything</button>
-              </div>
-            </div>
-          </div>
-        </section>
+        <section class="view" id="view-today"></section>
+        <section class="view" id="view-plan"></section>
+        <section class="view" id="view-checkins"></section>
+        <section class="view" id="view-settings"></section>
+        <section class="view" id="view-risk"></section>
       </main>
     </div>
   </div>
 
-  <!-- Welcome tour -->
-  <div class="tour hidden" id="tour">
-    <div class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-title">
-      <div class="tour-body" id="tour-body"></div>
-      <div class="tour-foot">
-        <div class="dots" id="tour-dots"></div>
-        <div class="tour-btns">
-          <button class="btn ghost" id="tour-back">Back</button>
-          <button class="btn primary" id="tour-next">Next</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <datalist id="subjects"></datalist>
+  <div class="welcome hidden" id="welcome"></div>
+  <div id="dialog-root"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="app.js"></script>
 </body>
