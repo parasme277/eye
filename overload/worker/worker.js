@@ -17,6 +17,16 @@ const RATE_LIMIT = 20; // requests per minute per visitor (best effort)
 const hits = new Map();
 let cachedModel = null;
 let plainMode = false;
+// Flash models this key can use, best first: newest stable, then previews, then Lite.
+async function rankModels(key) {
+  const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
+  const data = await res.json().catch(() => ({}));
+  const version = (n) => parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+  const tier = (n) => (/lite/.test(n) ? 2 : /preview|exp/.test(n) ? 1 : 0);
+  return (data.models || []).filter((m) => (m.supportedGenerationMethods || []).includes("generateContent")).map((m) => m.name.replace(/^models\//, ""))
+    .filter((n) => /flash/.test(n) && !/image|tts|live|audio|embed|vision|thinking|learnlm|robotics|computer/.test(n))
+    .sort((a, b) => tier(a) - tier(b) || version(b) - version(a));
+}
 // Google retires model versions over time; find the newest general-purpose Flash model this key can use.
 async function findModel(key) {
   const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers: { "x-goog-api-key": key } });
@@ -90,6 +100,14 @@ export default {
       res = await send(model);
       if (res.status === 404) { model = cachedModel = await findModel(env.GEMINI_API_KEY); res = await send(model); }
       if (res.status === 400 && !plainMode && /thinking/i.test((await res.clone().json().catch(() => ({}))).error?.message || "")) { plainMode = true; res = await send(model); }
+      // Overloaded (503) or a hiccup (500): retry once, then try another Flash model for this request.
+      if (res.status === 503 || res.status === 500) { await new Promise((r) => setTimeout(r, 1500)); res = await send(model); }
+      if (res.status === 503 || res.status === 500) {
+        for (const alt of (await rankModels(env.GEMINI_API_KEY)).filter((m) => m !== model).slice(0, 2)) {
+          const ra = await send(alt);
+          if (ra.ok) { res = ra; break; }
+        }
+      }
     } catch (e) {
       return reply({ error: e.message || "Couldn't reach Gemini" }, 502);
     }

@@ -249,6 +249,7 @@ const AI_PROMPT = (t) =>
   'Reply with JSON only: {"hours": number between 0.25 and 40, "difficulty": integer 1-5, "parts": [{"label": "short phrase like Writing 5-6 pages", "hours": number}], "reason": "one short sentence"}';
 const GEMINI_API = "https://generativelanguage.googleapis.com/v1beta";
 let GEMINI_TIMEOUT = 45000; // newer models can be slow on the free tier
+let GEMINI_RETRY_MS = 1500;
 const timeoutError = () => Object.assign(new Error("Gemini is answering slowly right now"), { slow: true });
 async function geminiFetch(url, opts, ms) {
   const ctrl = new AbortController();
@@ -266,7 +267,7 @@ function geminiError(r) {
   const msg = r.data.error?.message ? r.data.error.message.split(".")[0] : `Gemini returned ${r.status}`;
   if ((r.status === 400 || r.status === 403) && /api key|permission|unauthori[sz]ed/i.test(msg)) return new Error("Google says that API key isn't valid");
   if (r.status === 429) return new Error("You've hit Gemini's free limit for now. Try again in a minute");
-  if (r.status === 503) return Object.assign(new Error("Gemini is busy right now"), { slow: true });
+  if (r.status === 503 || r.status === 500) return Object.assign(new Error("Google's Gemini servers are overloaded right now"), { busy: true });
   return new Error(msg);
 }
 // Lists the models this key can generate text with. Quick, and a good test of the key itself.
@@ -274,6 +275,14 @@ async function listGeminiModels(key) {
   const r = await geminiFetch(`${GEMINI_API}/models?pageSize=200`, { headers: { "x-goog-api-key": key } }, 15000);
   if (r.status !== 200) throw geminiError(r);
   return (r.data.models || []).filter((m) => (m.supportedGenerationMethods || []).includes("generateContent")).map((m) => m.name.replace(/^models\//, ""));
+}
+// Orders Flash models best-first: newest stable Flash, then previews, then Lite versions.
+function rankGeminiModels(usable) {
+  const version = (n) => parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+  const special = /image|tts|live|audio|embed|vision|thinking|learnlm|robotics|computer/;
+  const tier = (n) => (/lite/.test(n) ? 2 : /preview|exp/.test(n) ? 1 : 0);
+  return usable.filter((n) => /flash/.test(n) && !special.test(n))
+    .sort((a, b) => tier(a) - tier(b) || version(b) - version(a) || a.length - b.length);
 }
 // Picks the newest general-purpose Flash model from a list.
 function pickGeminiModel(usable) {
@@ -301,6 +310,7 @@ async function callGemini(key, prompt) {
     }, GEMINI_TIMEOUT);
   };
   let model = state.ai.model || GEMINI_DEFAULT_MODEL;
+  let usedFallback = null;
   let r = await send(model);
   if (r.status === 404) {
     model = pickGeminiModel(await listGeminiModels(key));
@@ -311,8 +321,22 @@ async function callGemini(key, prompt) {
     state.ai.plain = true;
     r = await send(model);
   }
+  // Google's servers are overloaded (503) or hiccuped (500): wait a moment and retry once,
+  // then try other Flash models this key can use for this one request.
+  if (r.status === 503 || r.status === 500) {
+    await new Promise((res) => setTimeout(res, GEMINI_RETRY_MS));
+    r = await send(model);
+  }
+  if (r.status === 503 || r.status === 500) {
+    const others = rankGeminiModels(await listGeminiModels(key).catch(() => [])).filter((m) => m !== model).slice(0, 2);
+    for (const alt of others) {
+      const ra = await send(alt);
+      if (ra.status >= 200 && ra.status < 300) { r = ra; usedFallback = alt; break; }
+    }
+  }
   if (r.status < 200 || r.status >= 300) throw geminiError(r);
-  state.ai.model = model;
+  state.ai.model = model; // keep the best model as the default even if a backup answered this time
+  state.ai.lastUsed = usedFallback || model;
   persist();
   return r.data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
 }
@@ -1051,8 +1075,9 @@ function syncSettingsBits() {
   const ks = $("#key-status");
   if (ks) {
     const st = state.ai.status;
-    ks.className = `keystatus ${st && !["ok", "testing", "checking", "slow"].includes(st) ? "bad" : ""}`;
+    ks.className = `keystatus ${st && !["ok", "testing", "checking", "slow", "busy"].includes(st) ? "bad" : ""}`;
     ks.innerHTML = st === "ok" ? `${ic("circle-check", "s16")}Key works${state.ai.model ? ` (using ${esc(state.ai.model)})` : ""}. Estimates from Gemini show <span class="tag tag-ai">${ic("sparkles", "s14")}AI estimate</span>`
+      : st === "busy" ? `${ic("clock", "s16")}Your key works, but Google's Gemini servers are overloaded right now. That's on Google's side. Try again in a few minutes; Overload uses its own estimates meanwhile.`
       : st === "slow" ? `${ic("clock", "s16")}Your key works${state.ai.model ? ` (using ${esc(state.ai.model)})` : ""}, but Gemini is answering slowly right now. Estimates may take up to a minute, and Overload shows its own estimate while it waits.`
       : st === "testing" ? "Checking your key…" : st === "checking" ? `Key accepted. Asking ${esc(state.ai.model || "Gemini")} a quick question…`
       : st ? `${ic("triangle-alert", "s16")}${esc(st)}` : "";
@@ -1160,7 +1185,7 @@ function maybeAI() {
       dlg.ai = { status: "done", result, desc: snapshot };
     } catch (err) {
       if (!dlg) return;
-      dlg.ai = { status: "error", err: err.slow ? "it's answering slowly right now, so this is Overload's own estimate" : err.message };
+      dlg.ai = { status: "error", err: err.busy ? "Google's servers are overloaded right now, so this is Overload's own estimate" : err.slow ? "it's answering slowly right now, so this is Overload's own estimate" : err.message };
     }
     renderDlgEst();
   }, 1100);
@@ -1579,7 +1604,7 @@ const actions = {
     // Step 2: one tiny request to make sure estimates come back.
     state.ai.status = "checking"; syncSettingsBits();
     try { await callGemini(state.ai.key, 'Reply with JSON only: {"ok": true}'); state.ai.status = "ok"; }
-    catch (e) { state.ai.status = e.slow ? "slow" : `Your key works, but Gemini sent back an error: ${e.message}.`; }
+    catch (e) { state.ai.status = e.busy ? "busy" : e.slow ? "slow" : `Your key works, but Gemini sent back an error: ${e.message}.`; }
     b.disabled = false; persist(); syncSettingsBits();
   },
   export: () => {
