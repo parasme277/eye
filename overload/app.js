@@ -256,7 +256,12 @@ async function geminiFetch(url, opts, ms) {
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
     const res = await fetch(url, { ...opts, signal: ctrl.signal });
-    return { status: res.status, data: await res.json().catch(() => ({})) };
+    const raw = await res.text().catch(() => "");
+    let data = {}, json = true;
+    try { data = raw ? JSON.parse(raw) : {}; } catch (e) { json = false; }
+    // Some failures come back as "200 OK" with an error object inside; treat them by their real code.
+    const status = res.ok && data.error ? Number(data.error.code) || 500 : res.status;
+    return { status, data, json, raw: raw.slice(0, 300) };
   } catch (e) {
     throw e.name === "AbortError" ? timeoutError() : new Error("Couldn't reach Gemini. Check your internet connection");
   } finally {
@@ -299,6 +304,20 @@ function pickGeminiModel(usable) {
 // Asks the model to keep its "thinking" short, which makes answers much faster.
 // Older models use a thinking budget, newer ones a thinking level.
 const thinkingFor = (model) => (/gemini-2\.5-flash/.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: "low" });
+// The answer text, skipping any "thought" parts some models include.
+const replyText = (r) => (r.json ? (r.data.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || "").join("").trim() : "");
+function emptyReplyError(r) {
+  if (!r.json) {
+    console.warn("Gemini reply was not JSON:", r.raw);
+    return new Error("Google sent back a web page instead of an answer. A school or network filter might be blocking Gemini");
+  }
+  const blocked = r.data.promptFeedback?.blockReason;
+  const finish = r.data.candidates?.[0]?.finishReason;
+  if (blocked) return new Error(`Gemini declined to answer (${blocked.toLowerCase().replace(/_/g, " ")})`);
+  if (finish === "MAX_TOKENS") return new Error("Gemini ran out of room for its answer. Try a shorter description");
+  if (finish && finish !== "STOP") return new Error(`Gemini stopped early (${finish.toLowerCase().replace(/_/g, " ")})`);
+  return Object.assign(new Error("Gemini sent back an empty answer. Try again in a minute"), { busy: true });
+}
 async function callGemini(key, prompt) {
   const send = (model) => {
     const generationConfig = { responseMimeType: "application/json", temperature: 0.2 };
@@ -335,17 +354,26 @@ async function callGemini(key, prompt) {
     }
   }
   if (r.status < 200 || r.status >= 300) throw geminiError(r);
+  // "OK" but nothing usable (an empty answer or a web page): ask once more before giving up.
+  if (!replyText(r)) {
+    const again = await send(usedFallback || model);
+    if (again.status >= 200 && again.status < 300) r = again;
+  }
+  if (!replyText(r)) throw emptyReplyError(r);
   state.ai.model = model; // keep the best model as the default even if a backup answered this time
   state.ai.lastUsed = usedFallback || model;
   persist();
-  return r.data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+  return replyText(r);
 }
 // Gemini sometimes wraps its JSON in extra text or code fences; pull out the {...} part.
 function parseJSONReply(text) {
   const s = String(text || "");
   const a = s.indexOf("{"), b = s.lastIndexOf("}");
   try { return JSON.parse(a >= 0 && b > a ? s.slice(a, b + 1) : s); }
-  catch (e) { throw new Error("Gemini sent back an answer Overload couldn't read"); }
+  catch (e) {
+    console.warn("Gemini reply could not be parsed:", s.slice(0, 300));
+    throw Object.assign(new Error("Gemini answered, but not in the format Overload asked for"), { unreadable: true });
+  }
 }
 async function aiEstimate(t) {
   let out;
@@ -354,7 +382,11 @@ async function aiEstimate(t) {
     out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error || `server returned ${res.status}`);
   } else {
-    out = parseJSONReply(await callGemini(state.ai.key, AI_PROMPT(t)));
+    try { out = parseJSONReply(await callGemini(state.ai.key, AI_PROMPT(t))); }
+    catch (e) {
+      if (!e.unreadable) throw e;
+      out = parseJSONReply(await callGemini(state.ai.key, AI_PROMPT(t))); // one more try
+    }
   }
   const hours = Math.max(0.25, round5(Number(out.hours)));
   if (!Number.isFinite(hours)) throw new Error("Gemini gave an unreadable answer");

@@ -116,10 +116,18 @@ export default {
       return reply({ error: `Gemini error ${res.status}: ${detail.error?.message || "unknown"}` }, 502);
     }
 
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+    // An "OK" reply can still be a web page, carry an error, or be empty; check before using it.
+    const data = await res.json().catch(() => null);
+    if (!data) return reply({ error: "Google sent back a web page instead of an answer" }, 502);
+    if (data.error) return reply({ error: `Gemini error ${data.error.code || ""}: ${data.error.message || "unknown"}`.trim() }, data.error.code === 503 ? 503 : 502);
+    const text = (data.candidates?.[0]?.content?.parts || []).filter((p) => !p.thought).map((p) => p.text || "").join("").trim();
+    if (!text) {
+      const why = data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason;
+      return reply({ error: why && why !== "STOP" ? `Gemini stopped early (${why})` : "Gemini sent back an empty answer" }, 502);
+    }
     let out;
-    try { out = JSON.parse(text.replace(/```json|```/g, "").trim()); } catch { return reply({ error: "Gemini gave an unreadable answer" }, 502); }
+    const a = text.indexOf("{"), b = text.lastIndexOf("}");
+    try { out = JSON.parse(a >= 0 && b > a ? text.slice(a, b + 1) : text); } catch { return reply({ error: "Gemini answered, but not in the expected format" }, 502); }
     const hours = Math.min(40, Math.max(0.25, Math.round(Number(out.hours) * 12) / 12));
     if (!Number.isFinite(hours)) return reply({ error: "Gemini gave an unreadable answer" }, 502);
     return reply({
