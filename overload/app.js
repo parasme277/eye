@@ -340,6 +340,13 @@ async function callGemini(key, prompt) {
   persist();
   return r.data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
 }
+// Gemini sometimes wraps its JSON in extra text or code fences; pull out the {...} part.
+function parseJSONReply(text) {
+  const s = String(text || "");
+  const a = s.indexOf("{"), b = s.lastIndexOf("}");
+  try { return JSON.parse(a >= 0 && b > a ? s.slice(a, b + 1) : s); }
+  catch (e) { throw new Error("Gemini sent back an answer Overload couldn't read"); }
+}
 async function aiEstimate(t) {
   let out;
   if (AI_ENDPOINT) {
@@ -347,7 +354,7 @@ async function aiEstimate(t) {
     out = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(out.error || `server returned ${res.status}`);
   } else {
-    out = JSON.parse((await callGemini(state.ai.key, AI_PROMPT(t))).replace(/```json|```/g, "").trim());
+    out = parseJSONReply(await callGemini(state.ai.key, AI_PROMPT(t)));
   }
   const hours = Math.max(0.25, round5(Number(out.hours)));
   if (!Number.isFinite(hours)) throw new Error("Gemini gave an unreadable answer");
@@ -1090,7 +1097,7 @@ let aiTimer = null;
 function openDialog(id) {
   const t = id ? taskById(id) : null;
   dlg = t
-    ? { id: t.id, title: t.title, subject: t.subject || "", due: t.due, difficulty: t.difficulty, type: t.type, desc: t.desc || "", manual: t.estSource === "manual" ? t.hours : null, ai: t.estSource === "ai" ? { status: "done", result: { hours: t.hours, items: t.estItems || [] }, desc: t.desc || "" } : { status: "idle" }, done: !!t.done }
+    ? { id: t.id, title: t.title, subject: t.subject || "", due: t.due, difficulty: t.difficulty, type: t.type, desc: t.desc || "", manual: t.estSource === "manual" ? t.hours : null, ai: t.estSource === "ai" ? { status: "done", result: { hours: t.hours, items: t.estItems || [] }, key: `${t.title.trim()}\n${(t.desc || "").trim()}` } : { status: "idle" }, done: !!t.done }
     : { id: null, title: "", subject: subjects()[0] || "", due: addDays(todayKey(), 4), difficulty: 3, type: "homework", desc: "", manual: null, ai: { status: "idle" } };
   const subs = subjects();
   if (dlg.subject && !subs.includes(dlg.subject)) subs.push(dlg.subject);
@@ -1128,7 +1135,7 @@ function closeDialog() { dlg = null; clearTimeout(aiTimer); $("#dialog-root").in
 function dlgEstimate() {
   const quick = quickEstimate(dlg.type, dlg.difficulty, `${dlg.title} ${dlg.desc}`);
   if (dlg.manual != null) return { ...quick, hours: dlg.manual, items: [{ label: "Your estimate", h: dlg.manual }], source: "manual" };
-  if (dlg.ai.status === "done" && dlg.ai.desc === dlg.desc) return { ...quick, hours: dlg.ai.result.hours, items: dlg.ai.result.items, source: "ai" };
+  if (dlg.ai.status === "done" && dlg.ai.key === aiKey()) return { ...quick, hours: dlg.ai.result.hours, items: dlg.ai.result.items, source: "ai" };
   return { ...quick, source: "quick" };
 }
 function renderDlgParts() {
@@ -1139,6 +1146,20 @@ function renderDlgParts() {
   $("#d-diff-lbl").textContent = `· ${DIFF_LABEL[dlg.difficulty - 1]}`;
   $$("#d-type button").forEach((b) => b.classList.toggle("on", b.dataset.v === dlg.type));
   renderDlgEst();
+}
+// Shows what Gemini is doing for this assignment, with a button to ask it.
+function geminiRow(e) {
+  if (e.source === "manual") return "";
+  if (!aiAvailable()) return `<div class="ai-row">${ic("sparkles", "s16")}<span>Want a second opinion from Google Gemini? Turn it on in Settings.</span>
+    <button class="btn btn-secondary btn-sm" data-action="gemini-settings">Settings</button></div>`;
+  const st = dlg.ai.status;
+  if (st === "checking") return `<div class="ai-row">${ic("sparkles", "s16")}<span>Asking Gemini… this can take a few seconds.</span></div>`;
+  if (st === "error") return `<div class="ai-row bad">${ic("triangle-alert", "s16")}<span>Gemini couldn't check this: ${esc(dlg.ai.err)}.</span>
+    <button class="btn btn-secondary btn-sm" data-action="ask-gemini">Try again</button></div>`;
+  if (e.source === "ai") return `<div class="ai-row">${ic("circle-check", "s16")}<span>Gemini checked this${state.ai.lastUsed ? ` (${esc(state.ai.lastUsed)})` : ""}.</span>
+    <button class="btn btn-ghost btn-sm" data-action="ask-gemini">Ask again</button></div>`;
+  return `<div class="ai-row">${ic("sparkles", "s16")}<span>${dlg.ai.status === "done" ? "You changed the details since Gemini last checked." : "Get a second opinion based on the title and description."}</span>
+    <button class="btn btn-primary btn-sm" data-action="ask-gemini">${ic("sparkles", "s14")}Ask Gemini</button></div>`;
 }
 function renderDlgEst() {
   if (!dlg) return;
@@ -1161,7 +1182,7 @@ function renderDlgEst() {
     <span class="k">We think this takes about</span>
     <div class="big">${fmt(e.hours)}</div>
     <div>${badge}</div>
-    ${dlg.ai.status === "error" && e.source !== "manual" ? `<span class="warnline">${ic("triangle-alert", "s14")}Gemini couldn't check this: ${esc(dlg.ai.err)}</span>` : ""}
+    ${geminiRow(e)}
     ${e.items.map((i) => `<div class="line"><span>${esc(i.label)}</span><b>${i.h < 0 ? "−" : e.items.length > 1 && i !== e.items[0] ? "+" : ""}${fmt(Math.abs(i.h))}</b></div>`).join("")}
     ${dlg.adjust || e.source === "manual" ? `<div class="manual"><label class="label" for="d-hours" style="margin:0">Your estimate</label><input class="input" id="d-hours" style="width:110px" value="${fmt(e.hours)}" />
       ${e.source === "manual" ? `<button class="btn btn-ghost btn-sm" data-action="d-reset">Use ours</button>` : ""}</div>` : ""}
@@ -1170,25 +1191,33 @@ function renderDlgEst() {
       <div class="spread">${spread.slice(0, 8).map(([k, h], i) => `<div title="${shortDay(k)}: ${fmt(h)}"><i style="height:${Math.max(10, (h / maxS) * 62)}px;animation-delay:${i * 50}ms"></i><span>${DAY_SHORT[dow(k)]}</span></div>`).join("")}</div>` : ""}
     ${sim.overflow[tmpId] ? `<span class="warnline">${ic("triangle-alert", "s14")}${fmt(sim.overflow[tmpId])} won't fit under your limits before it's due.</span>` : ""}`;
 }
+const aiKey = () => (dlg ? `${dlg.title.trim()}\n${dlg.desc.trim()}` : "");
+// Asks Gemini right away (the "Ask Gemini" button), using the title and description.
+async function askGemini() {
+  clearTimeout(aiTimer);
+  if (!dlg || !aiAvailable()) return;
+  if (!dlg.title.trim() && !dlg.desc.trim()) { toast("Add a title or description first."); $("#d-title")?.focus(); return; }
+  const key = aiKey();
+  dlg.ai = { status: "checking" };
+  renderDlgEst();
+  try {
+    const result = await aiEstimate({ title: dlg.title, type: dlg.type, difficulty: dlg.difficulty, desc: dlg.desc });
+    if (!dlg || aiKey() !== key) return;
+    dlg.manual = null;
+    dlg.ai = { status: "done", result, key };
+  } catch (err) {
+    if (!dlg) return;
+    dlg.ai = { status: "error", err: err.busy ? "Google's servers are overloaded right now. Try again in a minute" : err.slow ? "It took too long to answer. Try again in a minute" : err.message };
+  }
+  renderDlgEst();
+}
+// Also asks automatically once a description has been pasted.
 function maybeAI() {
   clearTimeout(aiTimer);
-  if (!dlg || !aiAvailable() || dlg.manual != null) return;
-  if (dlg.desc.trim().length < 15) { if (dlg.ai.status === "checking") dlg.ai = { status: "idle" }; return; }
-  if (dlg.ai.status === "done" && dlg.ai.desc === dlg.desc) return;
-  aiTimer = setTimeout(async () => {
-    const snapshot = dlg.desc;
-    dlg.ai = { status: "checking" };
-    renderDlgEst();
-    try {
-      const result = await aiEstimate({ title: dlg.title, type: dlg.type, difficulty: dlg.difficulty, desc: snapshot });
-      if (!dlg || dlg.desc !== snapshot) return;
-      dlg.ai = { status: "done", result, desc: snapshot };
-    } catch (err) {
-      if (!dlg) return;
-      dlg.ai = { status: "error", err: err.busy ? "Google's servers are overloaded right now, so this is Overload's own estimate" : err.slow ? "it's answering slowly right now, so this is Overload's own estimate" : err.message };
-    }
-    renderDlgEst();
-  }, 1100);
+  if (!dlg || !aiAvailable() || dlg.manual != null || dlg.ai.status === "checking") return;
+  if (dlg.desc.trim().length < 15) return;
+  if (dlg.ai.status === "done" && dlg.ai.key === aiKey()) return;
+  aiTimer = setTimeout(askGemini, 1100);
 }
 function saveDialog() {
   const title = $("#d-title").value.trim();
@@ -1674,8 +1703,10 @@ const actions = {
   },
   "dlg-finish": () => { const t = taskById(dlg.id); t.done = !t.done; closeDialog(); save(); toast(t.done ? `${t.title} marked as finished.` : `${t.title} is back in your plan.`); },
   "d-subj": (b) => { dlg.subject = b.dataset.v; renderDlgParts(); },
-  "d-diff": (b) => { dlg.difficulty = +b.dataset.v; dlg.ai.status === "done" && (dlg.ai.desc = null); renderDlgParts(); maybeAI(); },
-  "d-type": (b) => { dlg.type = b.dataset.v; dlg.ai.status === "done" && (dlg.ai.desc = null); renderDlgParts(); maybeAI(); },
+  "d-diff": (b) => { dlg.difficulty = +b.dataset.v; if (dlg.ai.status === "done") dlg.ai.key = null; renderDlgParts(); maybeAI(); },
+  "d-type": (b) => { dlg.type = b.dataset.v; if (dlg.ai.status === "done") dlg.ai.key = null; renderDlgParts(); maybeAI(); },
+  "ask-gemini": () => askGemini(),
+  "gemini-settings": () => { closeDialog(); goto("settings"); },
 };
 document.addEventListener("click", (e) => {
   const nav = e.target.closest(".nav-btn");
